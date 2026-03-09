@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        browser: [chromium, firefox, webkit]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 8.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: cd packages/core && pnpm exec playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run tests
+        run: cd packages/core && pnpm test --browser=${{ matrix.browser }}
+
+      - name: Upload coverage
+        if: matrix.browser == 'chromium'
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./packages/core/coverage/coverage-final.json

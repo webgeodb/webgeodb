@@ -1,0 +1,67 @@
+{
+  "name": "@webgeodb/core",
+  "version": "0.1.0",
+  "description": "WebGeoDB core engine - Spatial Database for the Modern Web",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:chrome": "vitest --browser=chromium",
+    "test:firefox": "vitest --browser=firefox",
+    "test:webkit": "vitest --browser=webkit",
+    "test:all": "vitest --browser=all",
+    "test:headed": "vitest --browser.chromium.headless=false",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "spatial",
+    "database",
+    "gis",
+    "geospatial",
+    "indexeddb",
+    "browser",
+    "offline"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@turf/turf": "^6.5.0",
+    "dexie": "^3.2.4",
+    "flatbush": "^4.3.0",
+    "proj4": "^2.9.2",
+    "rbush": "^3.0.1",
+    "wkx": "^0.5.0"
+  },
+  "optionalDependencies": {
+    "jsts": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/rbush": "^3.0.3",
+    "@types/jsts": "^2.9.0",
+    "@typescript-eslint/eslint-plugin": "^6.19.0",
+    "@typescript-eslint/parser": "^6.19.0",
+    "@vitest/browser": "^1.6.0",
+    "@vitest/coverage-istanbul": "^1.6.0",
+    "eslint": "^8.56.0",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^24.0.0",
+    "playwright": "^1.58.2",
+    "tsup": "^8.0.0"
+  }
+}
