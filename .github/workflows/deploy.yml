@@ -49,6 +49,7 @@ jobs:
       - name: Prepare deployment
         run: |
           mkdir -p dist
+          mkdir -p dist/apps
 
           # 复制静态演示
           cp -r examples/tutorial-02/demos dist/demos-spatial
