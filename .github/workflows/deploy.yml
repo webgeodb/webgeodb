@@ -40,11 +40,11 @@ jobs:
 
       - name: Build Vite apps
         run: |
-          cd examples/tutorial-04/01-offline-map && pnpm build
-          cd ../02-location-tracking && pnpm build
-          cd ../03-fitness-tracker && pnpm build
-          cd ../../projects/geo-fencing && pnpm build
-          cd ../environmental-monitoring && pnpm build
+          cd examples/tutorial-04/01-offline-map && pnpm install && pnpm build
+          cd ../02-location-tracking && pnpm install && pnpm build
+          cd ../03-fitness-tracker && pnpm install && pnpm build
+          cd ../../projects/geo-fencing && pnpm install && pnpm build
+          cd ../environmental-monitoring && pnpm install && pnpm build
 
       - name: Prepare deployment
         run: |
