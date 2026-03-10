@@ -8,6 +8,8 @@
 [![coverage](https://img.shields.io/badge/coverage-75%25%2B-green)](./docs/reports/test-coverage.md)
 [![browsers](https://img.shields.io/badge/browsers-Chromium%20%7C%20Firefox%20%7C%20WebKit-blue)](./docs/reports/multi-browser-test-report.md)
 
+> 🌐 **[English README](./README_EN.md)** | 📖 **中文文档**
+
 ## 特性
 
 - 🪶 **轻量级**: 核心包 < 500KB,比 SQLite WASM 小 50%
