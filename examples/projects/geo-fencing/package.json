@@ -26,7 +26,7 @@
   "author": "WebGeoDB Team",
   "license": "MIT",
   "dependencies": {
-    "@webgeodb/core": "^1.0.0",
+    "@webgeodb/core": "workspace:*",
     "leaflet": "^1.9.4"
   },
   "devDependencies": {
@@ -38,7 +38,7 @@
     "eslint": "^8.57.0",
     "prettier": "^3.2.5",
     "typescript": "^5.3.3",
-    "vite": "^5.1.3",
+    "vite": "^5.4.21",
     "vitest": "^1.2.2"
   },
   "peerDependencies": {

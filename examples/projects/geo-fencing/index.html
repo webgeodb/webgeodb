@@ -546,7 +546,7 @@
       btnToggleHeatmap.classList.toggle('active', heatmapVisible);
 
       if (heatmapVisible && demo) {
-        const bbox: [number, number, number, number] = [116.38, 39.90, 116.49, 39.93];
+        const bbox = [116.38, 39.90, 116.49, 39.93];
         const heatmapData = await demo.app.analytics.generateHeatmap(bbox, 0.005);
         demo.map.displayHeatmap(heatmapData);
         addLog('🔥 显示热力图');
