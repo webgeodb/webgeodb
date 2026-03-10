@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGeoDB 在线示例</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            line-height: 1.6;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+        }
+        .section {
+            margin: 30px 0;
+        }
+        .section h2 {
+            color: #444;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .demo-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.3s;
+            background: #fafafa;
+        }
+        .demo-card:hover {
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.2);
+            transform: translateY(-4px);
+            border-color: #667eea;
+        }
+        .demo-card h3 {
+            margin-top: 0;
+            color: #333;
+            font-size: 1.2em;
+        }
+        .demo-card p {
+            color: #666;
+            font-size: 0.95em;
+            margin-bottom: 15px;
+        }
+        .demo-card a {
+            display: inline-block;
+            margin-top: 10px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        .demo-card a:hover {
+            color: #764ba2;
+            text-decoration: underline;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+        .badge-static {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .badge-app {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+        .badge-coming {
+            background: #fff3e0;
+            color: #ef6c00;
+        }
+        .resources {
+            background: #f5f5f5;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .resources ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .resources li {
+            padding: 8px 0;
+        }
+        .resources a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .resources a:hover {
+            text-decoration: underline;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            color: #999;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌍 WebGeoDB 在线示例</h1>
+        <p class="subtitle">浏览器端空间数据库，支持 CRUD 操作、空间查询和地理计算</p>
+
+        <div class="section">
+            <h2>🎯 快速演示（纯静态）</h2>
+            <div class="demo-grid">
+                <div class="demo-card">
+                    <h3>空间谓词演示</h3>
+                    <p>8个空间关系判断的交互式演示</p>
+                    <span class="badge badge-static">静态</span>
+                    <a href="demos/spatial/">查看演示 →</a>
+                </div>
+                <div class="demo-card">
+                    <h3>离线地图演示</h3>
+                    <p>离线地图 + 位置追踪功能展示</p>
+                    <span class="badge badge-static">静态</span>
+                    <a href="demos/offline/">查看演示 →</a>
+                </div>
+                <div class="demo-card">
+                    <h3>专题应用演示</h3>
+                    <p>5个完整的行业应用演示</p>
+                    <span class="badge badge-static">静态</span>
+                    <a href="demos/projects/">查看演示 →</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🚀 完整应用（Vite 构建）</h2>
+            <div class="demo-grid">
+                <div class="demo-card">
+                    <h3>离线地图应用</h3>
+                    <p>完整的离线地图解决方案</p>
+                    <span class="badge badge-app">应用</span>
+                    <a href="apps/offline-map/">查看应用 →</a>
+                </div>
+                <div class="demo-card">
+                    <h3>位置追踪</h3>
+                    <p>实时位置记录与轨迹回放</p>
+                    <span class="badge badge-app">应用</span>
+                    <a href="apps/location-tracking/">查看应用 →</a>
+                </div>
+                <div class="demo-card">
+                    <h3>健身追踪</h3>
+                    <p>运动轨迹记录与数据分析</p>
+                    <span class="badge badge-app">应用</span>
+                    <a href="apps/fitness-tracker/">查看应用 →</a>
+                </div>
+                <div class="demo-card">
+                    <h3>地理围栏</h3>
+                    <p>电商地理围栏电子围栏系统</p>
+                    <span class="badge badge-app">应用</span>
+                    <a href="apps/geo-fencing/">查看应用 →</a>
+                </div>
+                <div class="demo-card">
+                    <h3>环境监测</h3>
+                    <p>环境监测站数据管理</p>
+                    <span class="badge badge-app">应用</span>
+                    <a href="apps/environmental/">查看应用 →</a>
+                </div>
+            </div>
+            <p style="color: #999; font-size: 0.9em; margin-top: 15px;">
+                💡 更多应用（智慧城市、物流配送、社交位置）正在开发中...
+            </p>
+        </div>
+
+        <div class="section">
+            <h2>📚 相关资源</h2>
+            <div class="resources">
+                <ul>
+                    <li>📖 <a href="https://github.com/zhyt1985/webgeodb" target="_blank">GitHub 仓库</a></li>
+                    <li>📦 <a href="https://www.npmjs.com/package/@webgeodb/core" target="_blank">npm 包</a></li>
+                    <li>📝 <a href="https://github.com/zhyt1985/webgeodb/blob/main/docs/README.md" target="_blank">完整教程</a></li>
+                    <li>🎨 <a href="https://github.com/zhyt1985/webgeodb/blob/main/docs/guides/" target="_blank">使用指南</a></li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>© 2025 WebGeoDB | 基于 Web 标准构建的空间数据库</p>
+        </div>
+    </div>
+</body>
+</html>

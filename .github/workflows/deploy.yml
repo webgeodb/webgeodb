@@ -1,0 +1,78 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build core package
+        run: pnpm --filter @webgeodb/core build
+
+      - name: Build Vite apps
+        run: |
+          cd examples/tutorial-04/01-offline-map && pnpm build
+          cd ../02-location-tracking && pnpm build
+          cd ../03-fitness-tracker && pnpm build
+          cd ../../projects/geo-fencing && pnpm build
+          cd ../environmental-monitoring && pnpm build
+
+      - name: Prepare deployment
+        run: |
+          mkdir -p dist
+
+          # 复制静态演示
+          cp -r examples/tutorial-02/demos dist/demos-spatial
+          cp -r examples/tutorial-04/demos dist/demos-offline
+          cp -r examples/projects/demos dist/demos-projects
+
+          # 复制 Vite 应用
+          cp -r examples/tutorial-04/01-offline-map/dist dist/apps/offline-map
+          cp -r examples/tutorial-04/02-location-tracking/dist dist/apps/location-tracking
+          cp -r examples/tutorial-04/03-fitness-tracker/dist dist/apps/fitness-tracker
+          cp -r examples/projects/geo-fencing/dist dist/apps/geo-fencing
+          cp -r examples/projects/environmental-monitoring/dist dist/apps/environmental
+
+          # 复制主页
+          cp docs/index.html dist/index.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
