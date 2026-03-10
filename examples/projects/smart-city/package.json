@@ -1,0 +1,31 @@
+{
+  "name": "smart-city-example",
+  "version": "1.0.0",
+  "description": "Smart City Infrastructure Management - WebGeoDB Project Example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "test": "echo \"No tests yet\" && exit 0",
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts"
+  },
+  "keywords": [
+    "webgeodb",
+    "smart-city",
+    "gis",
+    "infrastructure",
+    "spatial-analysis"
+  ],
+  "author": "WebGeoDB",
+  "license": "MIT",
+  "dependencies": {
+    "@turf/turf": "^7.1.0",
+    "@webgeodb/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.6",
+    "tsx": "^4.20.0",
+    "typescript": "^5.7.2"
+  }
+}

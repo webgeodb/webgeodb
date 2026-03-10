@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>专题应用演示 - WebGeoDB 教程</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌍 WebGeoDB 专题应用演示</h1>
+            <p class="subtitle">5个完整的行业应用场景</p>
+        </header>
+
+        <nav class="project-nav">
+            <button class="nav-btn active" data-project="geo-fencing">
+                <span class="icon">🛒</span>
+                <span>地理围栏</span>
+            </button>
+            <button class="nav-btn" data-project="environmental">
+                <span class="icon">🌿</span>
+                <span>环境监测</span>
+            </button>
+            <button class="nav-btn" data-project="logistics">
+                <span class="icon">🚚</span>
+                <span>物流配送</span>
+            </button>
+            <button class="nav-btn" data-project="smart-city">
+                <span class="icon">🏙️</span>
+                <span>智慧城市</span>
+            </button>
+            <button class="nav-btn" data-project="social">
+                <span class="icon">👥</span>
+                <span>社交位置</span>
+            </button>
+        </nav>
+
+        <div class="main-content">
+            <!-- 地理围栏演示 -->
+            <div id="geo-fencing-demo" class="project-section active">
+                <div class="project-header">
+                    <h2>🛒 电商地理围栏营销系统</h2>
+                    <p>基于地理位置的精准营销和区域管理</p>
+                </div>
+
+                <div class="dashboard">
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="stat-icon">📍</div>
+                            <div class="stat-content">
+                                <div class="stat-value">24</div>
+                                <div class="stat-label">活跃围栏</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">👥</div>
+                            <div class="stat-content">
+                                <div class="stat-value">1,234</div>
+                                <div class="stat-label">覆盖用户</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💰</div>
+                            <div class="stat-content">
+                                <div class="stat-value">89%</div>
+                                <div class="stat-label">转化率</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🎯</div>
+                            <div class="stat-content">
+                                <div class="stat-value">456</div>
+                                <div class="stat-label">今日推送</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="content-row">
+                        <div class="map-container">
+                            <div id="geo-fencing-map" class="map"></div>
+                            <div class="map-legend">
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #4285f4;"></span>
+                                    <span>配送区域</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #34a853;"></span>
+                                    <span>促销区域</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #fbbc04;"></span>
+                                    <span>限制区域</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="control-panel">
+                            <h3>围栏管理</h3>
+                            <div class="fence-list">
+                                <div class="fence-item">
+                                    <div class="fence-info">
+                                        <span class="fence-name">CBD核心商圈</span>
+                                        <span class="fence-type">配送区域</span>
+                                    </div>
+                                    <span class="fence-status active">活跃</span>
+                                </div>
+                                <div class="fence-item">
+                                    <div class="fence-info">
+                                        <span class="fence-name">三里屯促销区</span>
+                                        <span class="fence-type">促销区域</span>
+                                    </div>
+                                    <span class="fence-status active">活跃</span>
+                                </div>
+                                <div class="fence-item">
+                                    <div class="fence-info">
+                                        <span class="fence-name">机场限制区</span>
+                                        <span class="fence-type">限制区域</span>
+                                    </div>
+                                    <span class="fence-status">停用</span>
+                                </div>
+                            </div>
+
+                            <div class="action-buttons">
+                                <button class="action-btn primary">➕ 创建围栏</button>
+                                <button class="action-btn">📊 数据分析</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 环境监测演示 -->
+            <div id="environmental-demo" class="project-section">
+                <div class="project-header">
+                    <h2>🌿 环境监测数据平台</h2>
+                    <p>实时环境数据采集与空间分析</p>
+                </div>
+
+                <div class="dashboard">
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="stat-icon">🌡️</div>
+                            <div class="stat-content">
+                                <div class="stat-value">23°C</div>
+                                <div class="stat-label">平均温度</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💨</div>
+                            <div class="stat-content">
+                                <div class="stat-value">45</div>
+                                <div class="stat-label">空气质量</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💧</div>
+                            <div class="stat-content">
+                                <div class="stat-value">65%</div>
+                                <div class="stat-label">湿度</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">📍</div>
+                            <div class="stat-content">
+                                <div class="stat-value">128</div>
+                                <div class="stat-label">监测站点</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="content-row">
+                        <div class="map-container">
+                            <div id="environmental-map" class="map"></div>
+                            <div class="map-legend">
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #34a853;"></span>
+                                    <span>优 (0-50)</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #fbbc04;"></span>
+                                    <span>良 (51-100)</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #ea4335;"></span>
+                                    <span>差 (>100)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="monitor-panel">
+                            <h3>实时监测数据</h3>
+                            <div class="monitor-list">
+                                <div class="monitor-item good">
+                                    <div class="monitor-info">
+                                        <span class="station-name">朝阳区站点</span>
+                                        <span class="station-value">AQI 45</span>
+                                    </div>
+                                    <div class="monitor-indicator good"></div>
+                                </div>
+                                <div class="monitor-item moderate">
+                                    <div class="monitor-info">
+                                        <span class="station-name">海淀区站点</span>
+                                        <span class="station-value">AQI 78</span>
+                                    </div>
+                                    <div class="monitor-indicator moderate"></div>
+                                </div>
+                                <div class="monitor-item poor">
+                                    <div class="monitor-info">
+                                        <span class="station-name">丰台区站点</span>
+                                        <span class="station-value">AQI 156</span>
+                                    </div>
+                                    <div class="monitor-indicator poor"></div>
+                                </div>
+                            </div>
+
+                            <div class="chart-placeholder">
+                                <h4>📊 24小时趋势</h4>
+                                <div class="simple-chart">
+                                    <div class="chart-bar" style="height: 40%"></div>
+                                    <div class="chart-bar" style="height: 60%"></div>
+                                    <div class="chart-bar" style="height: 45%"></div>
+                                    <div class="chart-bar" style="height: 80%"></div>
+                                    <div class="chart-bar" style="height: 55%"></div>
+                                    <div class="chart-bar" style="height: 70%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 物流配送演示 -->
+            <div id="logistics-demo" class="project-section">
+                <div class="project-header">
+                    <h2>🚚 物流配送优化系统</h2>
+                    <p>智能路线规划与配送管理</p>
+                </div>
+
+                <div class="dashboard">
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="stat-icon">📦</div>
+                            <div class="stat-content">
+                                <div class="stat-value">234</div>
+                                <div class="stat-label">待配送</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🚚</div>
+                            <div class="stat-content">
+                                <div class="stat-value">12</div>
+                                <div class="stat-label">运输中</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">✅</div>
+                            <div class="stat-content">
+                                <div class="stat-value">1,567</div>
+                                <div class="stat-label">已完成</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">⏱️</div>
+                            <div class="stat-content">
+                                <div class="stat-value">2.3h</div>
+                                <div class="stat-label">平均时长</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="content-row">
+                        <div class="map-container">
+                            <div id="logistics-map" class="map"></div>
+                            <div class="map-legend">
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #4285f4;"></span>
+                                    <span>仓库</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #34a853;"></span>
+                                    <span>配送点</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #ea4335;"></span>
+                                    <span>配送路线</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="delivery-panel">
+                            <h3>配送任务</h3>
+                            <div class="delivery-list">
+                                <div class="delivery-item">
+                                    <div class="delivery-info">
+                                        <span class="delivery-id">订单 #12345</span>
+                                        <span class="delivery-address">朝阳区望京SOHO</span>
+                                    </div>
+                                    <span class="delivery-status pending">待配送</span>
+                                </div>
+                                <div class="delivery-item">
+                                    <div class="delivery-info">
+                                        <span class="delivery-id">订单 #12346</span>
+                                        <span class="delivery-address">海淀区中关村</span>
+                                    </div>
+                                    <span class="delivery-status delivering">配送中</span>
+                                </div>
+                                <div class="delivery-item">
+                                    <div class="delivery-info">
+                                        <span class="delivery-id">订单 #12347</span>
+                                        <span class="delivery-address">东城区王府井</span>
+                                    </div>
+                                    <span class="delivery-status delivered">已送达</span>
+                                </div>
+                            </div>
+
+                            <div class="route-optimization">
+                                <h4>🎯 路线优化</h4>
+                                <div class="optimization-stats">
+                                    <div class="opt-item">
+                                        <span class="opt-label">节省距离</span>
+                                        <span class="opt-value">12.5 km</span>
+                                    </div>
+                                    <div class="opt-item">
+                                        <span class="opt-label">节省时间</span>
+                                        <span class="opt-value">45 分钟</span>
+                                    </div>
+                                    <div class="opt-item">
+                                        <span class="opt-label">节省成本</span>
+                                        <span class="opt-value">¥234</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 智慧城市演示 -->
+            <div id="smart-city-demo" class="project-section">
+                <div class="project-header">
+                    <h2>🏙️ 智慧城市基础设施管理</h2>
+                    <p>城市基础设施的智能监控与管理</p>
+                </div>
+
+                <div class="dashboard">
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="stat-icon">🛣️</div>
+                            <div class="stat-content">
+                                <div class="stat-value">2,345</div>
+                                <div class="stat-label">道路里程</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🏥</div>
+                            <div class="stat-content">
+                                <div class="stat-value">156</div>
+                                <div class="stat-label">公共设施</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">⚠️</div>
+                            <div class="stat-content">
+                                <div class="stat-value">23</div>
+                                <div class="stat-label">待维护</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">👷</div>
+                            <div class="stat-content">
+                                <div class="stat-value">89%</div>
+                                <div class="stat-label">完好率</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="content-row">
+                        <div class="map-container">
+                            <div id="smart-city-map" class="map"></div>
+                            <div class="map-legend">
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #4285f4;"></span>
+                                    <span>道路网络</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #34a853;"></span>
+                                    <span>公共设施</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #ea4335;"></span>
+                                    <span>维护区域</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="infrastructure-panel">
+                            <h3>基础设施</h3>
+                            <div class="infra-tabs">
+                                <button class="tab-btn active" data-tab="roads">道路</button>
+                                <button class="tab-btn" data-tab="pipelines">管网</button>
+                                <button class="tab-btn" data-tab="facilities">设施</button>
+                            </div>
+
+                            <div class="infra-content" id="infra-content">
+                                <div class="infra-item">
+                                    <div class="infra-name">长安街主干道</div>
+                                    <div class="infra-status good">正常</div>
+                                </div>
+                                <div class="infra-item">
+                                    <div class="infra-name">东三环路段</div>
+                                    <div class="infra-status warning">维护中</div>
+                                </div>
+                                <div class="infra-item">
+                                    <div class="infra-name">西二环辅路</div>
+                                    <div class="infra-status good">正常</div>
+                                </div>
+                            </div>
+
+                            <div class="analysis-tools">
+                                <h4>📊 分析工具</h4>
+                                <div class="tool-buttons">
+                                    <button class="tool-btn">连通性分析</button>
+                                    <button class="tool-btn">服务范围</button>
+                                    <button class="tool-btn">最优路径</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 社交位置演示 -->
+            <div id="social-demo" class="project-section">
+                <div class="project-header">
+                    <h2>👥 社交地理信息分享平台</h2>
+                    <p>基于位置的社交网络与信息分享</p>
+                </div>
+
+                <div class="dashboard">
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="stat-icon">👥</div>
+                            <div class="stat-content">
+                                <div class="stat-value">5,678</div>
+                                <div class="stat-label">活跃用户</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">📍</div>
+                            <div class="stat-content">
+                                <div class="stat-value">12,345</div>
+                                <div class="stat-label">位置分享</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🔥</div>
+                            <div class="stat-content">
+                                <div class="stat-value">892</div>
+                                <div class="stat-label">热点地点</div>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💬</div>
+                            <div class="stat-content">
+                                <div class="stat-value">23,456</div>
+                                <div class="stat-label">动态消息</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="content-row">
+                        <div class="map-container">
+                            <div id="social-map" class="map"></div>
+                            <div class="map-legend">
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #ea4335;"></span>
+                                    <span>用户位置</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #fbbc04;"></span>
+                                    <span>热点地点</span>
+                                </div>
+                                <div class="legend-item">
+                                    <span class="legend-color" style="background: #4285f4;"></span>
+                                    <span>活动范围</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="social-panel">
+                            <h3>附近动态</h3>
+                            <div class="social-feed">
+                                <div class="feed-item">
+                                    <div class="feed-user">
+                                        <span class="user-avatar">👤</span>
+                                        <span class="user-name">小明</span>
+                                    </div>
+                                    <div class="feed-content">
+                                        在三里屯发现一家很棒的咖啡店 ☕
+                                    </div>
+                                    <div class="feed-location">
+                                        📍 三里屯SOHO
+                                    </div>
+                                    <div class="feed-time">
+                                        5分钟前
+                                    </div>
+                                </div>
+                                <div class="feed-item">
+                                    <div class="feed-user">
+                                        <span class="user-avatar">👤</span>
+                                        <span class="user-name">小红</span>
+                                    </div>
+                                    <div class="feed-content">
+                                        朝阳公园跑步打卡！今天天气真好 🏃‍♀️
+                                    </div>
+                                    <div class="feed-location">
+                                        📍 朝阳公园
+                                    </div>
+                                    <div class="feed-time">
+                                        15分钟前
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="nearby-friends">
+                                <h4>👥 附近的好友</h4>
+                                <div class="friend-list">
+                                    <div class="friend-item">
+                                        <span class="friend-name">张三</span>
+                                        <span class="friend-distance">0.5 km</span>
+                                    </div>
+                                    <div class="friend-item">
+                                        <span class="friend-name">李四</span>
+                                        <span class="friend-distance">1.2 km</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <div class="tutorial-links">
+                <a href="https://github.com/zhyt1985/webgeodb" target="_blank">
+                    📚 WebGeoDB 文档
+                </a>
+                <a href="../" target="_blank">
+                    🔙 返回示例
+                </a>
+            </div>
+            <p class="copyright">
+                © 2025 WebGeoDB - 交互式空间数据库教程
+            </p>
+        </footer>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "name": "@webgeodb/tutorial-01-02-basic-crud",
+  "version": "1.0.0",
+  "description": "WebGeoDB 教程示例 - 第1章: 快速入门 - CRUD基础操作",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node --loader ts-node/esm ./src/index.ts",
+    "dev": "ts-node ./src/index.ts",
+    "test": "echo \"暂无测试\" && exit 0",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "webgeodb",
+    "tutorial",
+    "geospatial",
+    "database",
+    "crud",
+    "query"
+  ],
+  "author": "WebGeoDB",
+  "license": "MIT",
+  "dependencies": {
+    "@webgeodb/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "ts-node": "^10.9.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

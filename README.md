@@ -163,6 +163,30 @@ pnpm lint
 
 ## 文档
 
+### 🎓 入门教程系列
+
+**从零到精通的完整学习路径** - 5个章节 + 5个专题应用
+
+| 章节 | 标题 | 学习时间 | 内容 |
+|------|------|----------|------|
+| 第1章 | [快速上手入门](./docs/tutorials/zh/chapter-01-getting-started.md) | 30-45分钟 | 环境准备、数据库创建、CRUD操作、几何类型 |
+| 第2章 | [空间查询实战](./docs/tutorials/zh/chapter-02-spatial-queries.md) | 45-60分钟 | 属性查询、空间谓词、索引优化、复杂查询 |
+| 第3章 | [高级特性与优化](./docs/tutorials/zh/chapter-03-advanced-features.md) | 60-90分钟 | 几何计算、事务管理、性能优化、数据导入导出 |
+| 第4章 | [实际应用场景](./docs/tutorials/zh/chapter-04-real-world-apps.md) | 90-120分钟 | 应用架构、地图集成、实时追踪、离线支持 |
+| 第5章 | [生产环境最佳实践](./docs/tutorials/zh/chapter-05-production-ready.md) | 60-90分钟 | 生产配置、安全性、测试策略、监控部署 |
+
+**专题应用** - 完整的行业解决方案示例：
+
+| 应用 | 描述 | 技术亮点 |
+|------|------|----------|
+| [电商地理围栏营销](./docs/tutorials/zh/projects/geo-fencing.md) | 位置驱动的智能营销系统 | 多边形围栏、实时位置检测、热力图分析 |
+| [智慧城市基础设施](./docs/tutorials/zh/projects/smart-city.md) | 城市设施数字化管理 | 网络分析、缓冲区分析、多层叠加 |
+| [环境监测平台](./docs/tutorials/zh/projects/environmental-monitoring.md) | 时空数据采集与分析 | 空间插值、动态可视化、等值线生成 |
+| [物流配送优化](./docs/tutorials/zh/projects/logistics.md) | 智能配送路径规划 | Voronoi图、TSP优化、实时追踪 |
+| [社交位置分享](./docs/tutorials/zh/projects/social-location.md) | 隐私保护的社交平台 | 位置模糊化、推荐算法、大规模并发 |
+
+> 💡 **英文文档**: [English Tutorials](./docs/tutorials/en/)
+
 ### 项目文档
 
 - [项目概览](./docs/architecture/overview.md) - 项目概述和设计理念
@@ -170,40 +194,63 @@ pnpm lint
 - [贡献指南](./CONTRIBUTING.md) - 如何贡献代码
 - [实施报告](./docs/reports/browser-automation-success.md) - 测试基础设施实施
 
-### 测试文档
-
-- [测试指南](./packages/core/TESTING.md) - 如何运行和编写测试
-- [多浏览器测试报告](./docs/reports/multi-browser-test-report.md) - 浏览器兼容性验证
-- [覆盖率报告](./docs/reports/test-coverage.md) - 测试覆盖率详细分析
-- [任务完成总结](./docs/reports/tasks-completed.md) - 已完成任务清单
-
 ### 用户文档
 
 - [快速开始](./docs/getting-started.md) - 快速上手指南
 - [API 参考](./docs/api/reference.md) - 完整的 API 文档
+- [空间引擎指南](./docs/api/spatial-engine.md) - 空间引擎详解
 - [迁移指南](./docs/guides/migration.md) - 从其他数据库迁移
 - [自定义引擎开发](./docs/guides/custom-engine.md) - 开发自定义空间引擎
-
-### 待编写文档
-
-- [性能优化指南](./docs/guides/performance.md) - 索引选择、查询优化
-- [最佳实践](./docs/guides/best-practices.md) - 数据建模、生产环境配置
+- [最佳实践](./docs/guides/best-practices.md) - 数据建模和生产环境配置
+- [性能优化](./docs/guides/performance.md) - 索引选择、查询优化
 - [故障排除](./docs/guides/troubleshooting.md) - 常见问题、调试技巧
 
 ## 示例
 
-### 已实现 ✅
+### 📚 教程示例
 
-- [基础 CRUD 操作](./examples/basic-crud) - 简单的增删改查示例
-- [空间查询](./examples/spatial-query) - 距离查询和条件过滤
+配合入门教程系列的完整可运行示例：
 
-### 开发中 🔄
+**第1章 - 快速上手入门**:
+- [01-first-database](./examples/tutorial-01/01-first-database) - 创建第一个数据库
+- [02-basic-crud](./examples/tutorial-01/02-basic-crud) - CRUD基础操作
+- [03-place-markers](./examples/tutorial-01/03-place-markers) - 个人地点标记系统
 
-- [离线地图应用](./examples/offline-map) - 离线地图瓦片缓存
-- [实时位置追踪](./examples/realtime-tracking) - 实时轨迹记录和查询
-- [空间数据分析](./examples/spatial-analysis) - 高级空间分析功能
-- [协同编辑](./examples/collaborative-editing) - 多人协作编辑
-- [三维可视化](./examples/3d-visualization) - 3D 地图展示
+**第2章 - 空间查询实战**:
+- [01-property-queries](./examples/tutorial-02/01-property-queries) - 属性查询进阶
+- [02-spatial-predicates](./examples/tutorial-02/02-spatial-predicates) - 空间谓词详解
+- [03-real-estate-app](./examples/tutorial-02/03-real-estate-app) - 房地产搜索应用
+- [在线演示](./examples/tutorial-02/demos/) - 空间谓词交互式演示
+
+**第3章 - 高级特性与优化**:
+- [01-geometry-compute](./examples/tutorial-03/01-geometry-compute) - 几何计算引擎
+- [02-transactions](./examples/tutorial-03/02-transactions) - 事务管理
+- [03-performance-opt](./examples/tutorial-03/03-performance-opt) - 性能优化
+
+**第4章 - 实际应用场景**:
+- [01-offline-map](./examples/tutorial-04/01-offline-map) - 离线地图应用
+- [02-location-tracking](./examples/tutorial-04/02-location-tracking) - 实时位置追踪
+- [03-fitness-tracker](./examples/tutorial-04/03-fitness-tracker) - 户外运动追踪器
+- [在线演示](./examples/tutorial-04/demos/) - 完整应用演示
+
+**第5章 - 生产环境最佳实践**:
+- [01-production-config](./examples/tutorial-05/01-production-config) - 生产环境配置
+- [02-security](./examples/tutorial-05/02-security) - 安全性示例
+- [03-monitoring](./examples/tutorial-05/03-monitoring) - 性能监控
+
+### 🚀 专题应用示例
+
+完整的生产级应用示例：
+- [电商地理围栏营销系统](./examples/projects/geo-fencing) - 地理围栏 + 营销规则引擎
+- [智慧城市基础设施管理](./examples/projects/smart-city) - 网络分析 + 空间统计
+- [环境监测数据平台](./examples/projects/environmental-monitoring) - 时空数据 + 插值分析
+- [物流配送优化系统](./examples/projects/logistics) - Voronoi图 + 路径优化
+- [社交地理信息分享](./examples/projects/social-location) - 隐私保护 + 推荐算法
+- [在线演示](./examples/projects/demos/) - 所有专题应用演示
+
+### 其他示例
+
+- [基础 CRUD 操作](./examples/basic-usage) - 简单的增删改查示例
 
 ## 路线图
 
