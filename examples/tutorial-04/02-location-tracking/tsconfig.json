@@ -14,8 +14,7 @@
     "noEmit": false,
     "declaration": false,
     "outDir": "./dist",
-    "rootDir": "./src",
-    "types": ["node", "leaflet"]
+    "rootDir": "./src"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

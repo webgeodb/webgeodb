@@ -15,8 +15,7 @@
     "noEmit": false,
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": "./src",
-    "types": ["node", "leaflet"]
+    "rootDir": "./src"
   },
   "include": [
     "src/**/*"
