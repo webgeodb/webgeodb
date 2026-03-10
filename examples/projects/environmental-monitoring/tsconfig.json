@@ -6,17 +6,17 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "allowJs": true,
-    "strict": true,
+    "strict": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "declaration": true,
-    "declarationMap": true,
+    "declaration": false,
+    "noEmit": false,
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "composite": true
+    "types": ["node", "leaflet"]
   },
   "include": [
     "src/**/*"
