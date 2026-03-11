@@ -338,9 +338,17 @@ describe('引擎注册表测试', () => {
   });
 
   it('应该能够获取引擎信息', () => {
+    // 重新注册默认引擎
+    EngineRegistry.clear();
+    const turfEngine = new TurfEngine();
+    EngineRegistry.register(turfEngine);
+
     const enginesInfo = EngineRegistry.getEnginesInfo();
     expect(enginesInfo.length).toBeGreaterThan(0);
-    expect(enginesInfo[0].name).toBe('turf');
+    // 找到默认引擎
+    const defaultEngine = enginesInfo.find(e => e.isDefault);
+    expect(defaultEngine).toBeDefined();
+    expect(defaultEngine?.name).toBe('turf');
   });
 
   it('应该能够获取支持特定谓词的引擎', () => {
