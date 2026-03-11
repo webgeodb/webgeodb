@@ -106,6 +106,40 @@ pnpm lint
 npx prettier --write .
 ```
 
+### Git 工作流
+```bash
+# 开发新功能
+git checkout main
+git pull origin main
+git checkout -b feature/your-feature-name
+
+# 保持分支更新
+git fetch origin main
+git rebase origin/main
+
+# 推送分支
+git push -u origin feature/your-feature-name
+
+# 创建 PR
+gh pr create --title "feat: description"
+
+# 删除已合并分支
+git branch -d feature/your-feature-name
+git push origin --delete feature/your-feature-name
+```
+
+### GitHub Issues
+```bash
+# 创建 Issue
+gh issue create --title "feat: description" --body "template"
+
+# 查看 Issue
+gh issue view 123
+
+# 关闭 Issue
+gh issue close 123
+```
+
 ---
 
 ## 📂 项目结构
@@ -123,15 +157,16 @@ webgeodb/
 ├── .claude/
 │   ├── CLAUDE.md         # 本文件（核心规范）
 │   └── docs/             # 详细文档
-│       ├── development-workflow.md
-│       ├── coding-standards.md
-│       ├── testing-standards.md
-│       ├── sql-standards.md
-│       ├── troubleshooting.md
+│       ├── development-workflow.md  # 开发流程
+│       ├── git-workflow.md         # Git 工作流
+│       ├── coding-standards.md      # 代码规范
+│       ├── testing-standards.md     # 测试规范
+│       ├── sql-standards.md         # SQL 规范
+│       ├── troubleshooting.md       # 问题排查
 │       └── checklists/
-│           ├── feature-development.md
-│           ├── bug-fix.md
-│           └── code-review.md
+│           ├── feature-development.md  # 功能开发
+│           ├── bug-fix.md             # Bug 修复
+│           └── code-review.md         # 代码审查
 └── docs/                 # 项目文档
 ```
 
@@ -163,26 +198,36 @@ webgeodb/
 根据任务类型，必须先阅读对应的详细文档：
 
 ### 🎯 新功能开发
-**必须阅读**: `.claude/docs/checklists/feature-development.md`
+**必须阅读**:
+1. `.claude/docs/git-workflow.md` - Git 分支和 Issues 管理
+2. `.claude/docs/checklists/feature-development.md` - 完整开发清单
 
 **核心步骤**:
-1. ✅ 方案设计（技术选型、架构设计）
-2. ✅ 任务分解（WBS、依赖关系）
-3. ✅ 开发实现（TDD、代码规范）
-4. ✅ 代码审查（自检清单）
-5. ✅ 单元测试（覆盖率 > 80%）
-6. ✅ 文档更新（API 文档、示例）
-7. ✅ 代码提交（Commit 格式、CI 通过）
+1. ✅ 创建 Issue（需求、验收标准、估算）
+2. ✅ 创建功能分支（feature/xxx）
+3. ✅ 方案设计（技术选型、架构设计）
+4. ✅ 任务分解（WBS、依赖关系）
+5. ✅ 开发实现（TDD、代码规范）
+6. ✅ 代码审查（自检清单）
+7. ✅ 创建 PR（填写模板、关联 Issue）
+8. ✅ 单元测试（覆盖率 > 80%）
+9. ✅ 文档更新（API 文档、示例）
+10. ✅ 合并代码（审查通过、CI 通过）
 
 ### 🐛 Bug 修复
-**必须阅读**: `.claude/docs/checklists/bug-fix.md`
+**必须阅读**:
+1. `.claude/docs/git-workflow.md` - Git 分支管理
+2. `.claude/docs/checklists/bug-fix.md` - Bug 修复清单
 
 **核心步骤**:
-1. ✅ 问题定位（日志、调试）
-2. ✅ 根因分析（为什么发生）
-3. ✅ 修复方案（最小改动）
-4. ✅ 回归测试（确保不引入新问题）
-5. ✅ 文档更新（如有必要）
+1. ✅ 创建 Issue（Bug 报告、复现步骤）
+2. ✅ 创建修复分支（bugfix/xxx）
+3. ✅ 问题定位（日志、调试）
+4. ✅ 根因分析（为什么发生）
+5. ✅ 修复方案（最小改动）
+6. ✅ 回归测试（确保不引入新问题）
+7. ✅ 创建 PR（描述修复方案）
+8. ✅ 文档更新（如有必要）
 
 ### 🔍 代码审查
 **必须阅读**: `.claude/docs/checklists/code-review.md`
@@ -193,6 +238,8 @@ webgeodb/
 - [ ] 测试覆盖（> 80%）
 - [ ] 导入路径（test/ 用 `../src`）
 - [ ] SQL 语法（PostgreSQL 风格）
+- [ ] Git 提交信息规范
+- [ ] PR 描述完整
 
 ---
 

@@ -20,6 +20,42 @@
 - [ ] 估算工作量（开发、测试、文档）
 - [ ] 确定里程碑和交付时间
 
+### 4. GitHub Issues 创建
+- [ ] 在 GitHub 创建 Issue
+- [ ] 选择 Issue 类型（Feature/Bug/Enhancement）
+- [ ] 设置优先级（Critical/High/Medium/Low）
+- [ ] 填写功能描述和验收标准
+- [ ] 提供技术方案
+- [ ] 估算工作量
+- [ ] 指派开发者
+- [ ] 设置里程碑
+- [ ] 获取 Issue 编号（例如 #123）
+
+## ✅ Git 准备阶段
+
+### 5. 分支创建
+```bash
+# 从最新的 main 创建分支
+git checkout main
+git pull origin main
+
+# 创建功能分支（命名规范: feature/xxx）
+git checkout -b feature/your-feature-name
+
+# 在第一个 commit 中关联 Issue
+git commit -m "feat: initial setup
+
+Closes #123
+"
+```
+
+### 6. 分支配置检查
+- [ ] 分支命名符合规范（feature/xxx）
+- [ ] 从最新的 main 创建
+- [ ] 在 commit 信息中关联 Issue（Closes #123）
+- [ ] 分支已推送到远程
+- [ ] 设置分支保护规则
+
 ## ✅ 开发阶段
 
 ### 4. 环境准备
@@ -94,6 +130,38 @@ pnpm test:webkit   # ✅ 通过
 - [ ] 更新 CLAUDE.md（如有新规范）
 - [ ] 记录已知问题和限制
 
+## ✅ PR 创建阶段
+
+### 15. 推送代码
+```bash
+# 确保所有提交已推送
+git push origin feature/your-feature-name
+
+# 如果有 main 更新，先 rebase
+git fetch origin main
+git rebase origin/main
+git push origin feature/your-feature-name --force-with-lease
+```
+
+### 16. 创建 Pull Request
+- [ ] 使用 gh CLI 或在 GitHub Web 创建 PR
+- [ ] PR 标题符合规范（type(scope): subject）
+- [ ] 填写 PR 描述模板
+- [ ] 关联 Issue（Closes #123）
+- [ ] 添加变更说明
+- [ ] 添加测试结果
+- [ ] 添加文档更新说明
+- [ ] 完成检查清单
+
+### 17. PR 内容检查
+- [ ] 概述清晰简短
+- [ ] 变更内容完整（新增/修改/删除）
+- [ ] 测试情况说明（通过率、覆盖率）
+- [ ] 文档更新说明
+- [ ] 破坏性变更说明（如有）
+- [ ] Issue 关联正确（Closes #123）
+- [ ] 检查清单完整
+
 ## ✅ 代码审查阶段
 
 ### 15. 自我审查
@@ -117,7 +185,7 @@ pnpm lint          # 无 lint 错误
 
 ## ✅ 提交阶段
 
-### 17. Git 提交
+### 18. 本地提交
 ```bash
 # 查看变更
 git status
@@ -132,10 +200,10 @@ git commit -m "feat: 添加功能描述
 
 测试: 添加xx测试
 文档: 更新xx文档
-"
+Refs #123"
 ```
 
-### 18. 推送到远程
+### 19. 推送到远程
 ```bash
 # 拉取最新代码
 git pull origin main --rebase
@@ -144,17 +212,28 @@ git pull origin main --rebase
 git push -u origin feature/your-feature-name
 ```
 
-### 19. 创建 Pull Request
-- [ ] 填写 PR 模板
-- [ ] 关联相关 Issue
-- [ ] 添加测试截图（如适用）
-- [ ] 等待 CI 通过
+## ✅ PR 审查阶段
 
-### 20. 代码审查
-- [ ] 至少一位维护者审查
+### 20. 等待 CI 完成
+- [ ] CI 测试全部通过（Chrome/Firefox/Safari）
+- [ ] 测试覆盖率 ≥ 80%
+- [ ] 无 TypeScript 错误
+- [ ] 无 lint 错误
+- [ ] 构建成功
+
+### 21. 请求代码审查
+- [ ] 至少一位审查者审查
+- [ ] 响应审查意见
+- [ ] 修改反馈的问题
+- [ ] 推送更新
+- [ ] 重新审查
+
+### 22. 审查通过检查
 - [ ] 所有审查意见已处理
-- [ ] CI 测试全部通过
+- [ ] CI 最终测试通过
+- [ ] 至少一位审查者批准（LGTM）
 - [ ] 无合并冲突
+- [ ] 准备合并
 
 ## ✅ 合并后阶段
 

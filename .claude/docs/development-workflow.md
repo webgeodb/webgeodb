@@ -10,15 +10,18 @@
 graph TD
     A[1. 需求分析] --> B[2. 方案设计]
     B --> C[3. 任务分解]
-    C --> D[4. TDD 开发]
-    D --> E[5. 代码审查]
-    E --> F[6. 测试验证]
-    F --> G[7. 文档更新]
-    G --> H[8. 代码提交]
-    H --> I[9. CI/CD]
-    I --> J{CI 通过?}
-    J -->|否| D
-    J -->|是| K[10. 代码合并]
+    C --> D[4. GitHub Issues 创建]
+    D --> E[5. 分支创建]
+    E --> F[6. TDD 开发]
+    F --> G[7. 代码审查]
+    G --> H[8. 测试验证]
+    H --> I[9. 文档更新]
+    I --> J[10. 代码提交]
+    J --> K[11. CI/CD]
+    K --> L{CI 通过?}
+    L -->|否| F
+    L -->|是| M[12. PR 创建和合并]
+    M --> N[13. 代码合并]
 ```
 
 ---
@@ -98,7 +101,183 @@ graph TD
 
 ---
 
-## 4. TDD 开发阶段
+## 4. GitHub Issues 创建阶段
+
+### 目标
+- 在 GitHub Issues 中记录需求或 Bug
+- 明确类型、优先级、验收标准
+- 指派开发者和里程碑
+
+### Issue 类型
+
+#### 功能需求 (Feature)
+```markdown
+## 类型: Feature
+## 优先级: High/Medium/Low
+## 复杂度: Small/Medium/Large
+
+### 功能描述
+实现 SQL 查询功能，支持 PostgreSQL/PostGIS 语法兼容。
+
+### 验收标准
+- [ ] 支持标准 SQL SELECT 语句
+- [ ] 支持参数化查询
+- [ ] 支持常见 PostGIS 函数
+- [ ] 测试覆盖率 ≥ 80%
+- [ ] 完整的文档和示例
+
+### 技术方案
+- 使用 node-sql-parser 解析 SQL
+- 转换 AST 到 QueryBuilder
+- 映射 PostGIS 函数
+
+### 估算工作量
+- SQL 解析器: 2 天
+- AST 转换器: 2 天
+- PostGIS 函数: 1 天
+- 测试和文档: 1 天
+- **总计**: 6 天
+
+### 指派
+@maintainer
+
+### 里程碑
+v1.0.0
+```
+
+#### Bug 报告 (Bug)
+```markdown
+## 类型: Bug
+## 严重程度: Critical/High/Medium/Low
+
+### 问题描述
+测试文件中使用 `../../src` 导入路径导致模块找不到。
+
+### 复现步骤
+1. 创建测试文件 `test/sql/test.ts`
+2. 使用 `import { WebGeoDB } from '../../src'`
+3. 运行 `pnpm test`
+4. 报错: 模块找不到
+
+### 期望行为
+应该使用 `import { WebGeoDB } from '../src'`
+
+### 环境信息
+- OS: macOS
+- Browser: Chromium
+- Node.js: v20
+
+### 指派
+@contributor
+```
+
+### Issue 创建检查清单
+- [ ] Issue 类型明确 (Feature/Bug/Enhancement)
+- [ ] 优先级设置正确
+- [ ] 验收标准清晰
+- [ ] 技术方案完整（功能需求）
+- [ ] 估算工作量合理
+- [ ] 已指派开发者
+- [ ] 已设置里程碑
+
+### 获取 Issue 编号
+```bash
+# 创建 Issue 后，GitHub 会分配编号
+# 例如: #123 - feat(sql): implement SQL query support
+
+# 在后续开发中引用此编号
+git commit -m "feat(sql): implement SQL parser
+
+Closes #123
+"
+```
+
+---
+
+## 5. 分支创建阶段
+
+### 目标
+- 为 Issue 创建对应的 Git 分支
+- 遵循分支命名规范
+- 关联 Issue 和分支
+
+### 分支类型和命名
+
+#### 功能分支 (feature/)
+```bash
+# 从 Issue #123 创建功能分支
+git checkout main
+git pull origin main
+git checkout -b feature/sql-query-support
+
+# 关联 Issue
+# 在第一个 commit 中引用 Issue
+git commit -m "feat(sql): initial setup
+
+Closes #123
+"
+```
+
+#### Bug 修复分支 (bugfix/)
+```bash
+# 从 Issue #456 创建修复分支
+git checkout main
+git pull origin main
+git checkout -b bugfix/test-import-path-error
+
+# 关联 Issue
+git commit -m "fix(test): correct import path
+
+Fixes #456
+"
+```
+
+#### 紧急修复分支 (hotfix/)
+```bash
+# 生产环境紧急问题
+git checkout main
+git pull origin main
+git checkout -b hotfix/security-vulnerability
+
+# 标记为紧急
+git commit -m "hotfix(security): patch critical issue
+
+Critical production issue.
+"
+```
+
+### 分支创建检查清单
+- [ ] 从最新的 main 创建分支
+- [ ] 分支命名符合规范
+- [ ] 在第一个 commit 中关联 Issue
+- [ ] 分支推送前运行测试
+- [ ] 通知团队成员
+
+### 分支管理命令
+```bash
+# 查看所有分支
+git branch -a
+
+# 查看当前分支
+git branch --show-current
+
+# 保持分支更新
+git fetch origin main
+git rebase origin/main
+
+# 推送分支到远程
+git push -u origin feature/xxx
+
+# 删除已合并的本地分支
+git branch -d feature/xxx
+
+# 删除已合并的远程分支
+git push origin --delete feature/xxx
+```
+
+---
+
+## 6. TDD 开发阶段
 
 ### 4.1 Red（写失败的测试）
 ```typescript
@@ -167,7 +346,7 @@ class SQLParser {
 
 ---
 
-## 5. 代码审查阶段
+## 7. 代码审查阶段
 
 ### 自我审查
 使用 `.claude/docs/checklists/code-review.md`：
@@ -191,7 +370,7 @@ class SQLParser {
 
 ---
 
-## 6. 测试验证阶段
+## 8. 测试验证阶段
 
 ### 本地测试
 ```bash
@@ -224,7 +403,7 @@ pnpm build
 
 ---
 
-## 7. 文档更新阶段
+## 9. 文档更新阶段
 
 ### 代码文档
 ```typescript
@@ -262,7 +441,7 @@ class SQLExecutor {
 
 ---
 
-## 8. 代码提交阶段
+## 10. 代码提交阶段
 
 ### Commit 格式
 ```bash
@@ -284,7 +463,7 @@ Closes #123
 
 ---
 
-## 9. CI/CD 阶段
+## 11. CI/CD 阶段
 
 ### CI 检查
 ```yaml
@@ -324,7 +503,156 @@ jobs:
 
 ---
 
-## 10. 代码合并阶段
+## 12. PR 创建和合并阶段
+
+### 目标
+- 创建 Pull Request
+- 填写 PR 模板
+- 关联 Issue
+- 通过代码审查
+- 合并到 main
+
+### PR 创建流程
+
+#### 1. 推送分支
+```bash
+# 确保所有提交已推送
+git push origin feature/sql-query-support
+
+# 如果有更新 main，先 rebase
+git fetch origin main
+git rebase origin/main
+git push origin feature/sql-query-support --force-with-lease
+```
+
+#### 2. 创建 PR
+```bash
+# 在 GitHub 上创建 PR
+# 或使用 gh CLI
+gh pr create \
+  --title "feat(sql): implement SQL query support" \
+  --body "PR 描述见模板"
+```
+
+#### 3. PR 标题格式
+```
+<type>(<scope>): <subject>
+
+示例:
+feat(sql): implement SQL query support
+fix(test): correct import path error
+docs(api): update SQL query documentation
+```
+
+#### 4. PR 描述模板
+```markdown
+## 概述
+<!-- 简短描述这个 PR 的目的 -->
+实现 SQL 查询功能，支持 PostgreSQL/PostGIS 语法。
+
+## 变更内容
+### 新增
+- SQL 解析器（基于 node-sql-parser）
+- AST 到 QueryBuilder 转换器
+- PostGIS 函数映射
+
+### 修改
+- 更新 query-builder.ts 支持转换
+
+### 删除
+- 无
+
+## 测试
+- [x] 单元测试通过 (15/15)
+- [x] E2E 测试通过 (7/7)
+- [x] 浏览器测试通过 (Chrome/Firefox/Safari)
+- [x] 测试覆盖率: 85%
+
+## 文档
+- [x] API 文档已更新
+- [x] 使用指南已更新
+- [x] CHANGELOG 已更新
+- [x] 示例代码已添加
+
+## 破坏性变更
+- [ ] 无破坏性变更
+
+## Issues
+Closes #123
+
+## Checklist
+- [x] 遵循代码规范
+- [x] 测试覆盖率 ≥ 80%
+- [x] 文档已更新
+- [x] 所有浏览器测试通过
+- [x] 自我审查完成
+```
+
+### PR 审查流程
+
+#### 审查前检查
+- [ ] CI 测试全部通过
+- [ ] 测试覆盖率 ≥ 80%
+- [ ] 无 TypeScript 错误
+- [ ] 无 lint 错误
+- [ ] 文档已更新
+- [ ] 自我审查完成
+
+#### 审查中
+- [ ] 请求至少一位审查者
+- [ ] 响应审查意见
+- [ ] 修改反馈的问题
+- [ ] 推送更新
+
+#### 审查通过后
+- [ ] 所有审查意见已处理
+- [ ] CI 最终测试通过
+- [ ] 准备合并
+
+### PR 合并方式
+
+#### Squash and Merge（推荐）
+```bash
+# 适用场景: 大多数功能分支
+# 优点: 历史记录清晰
+# 在 GitHub PR 页面选择 "Squash and merge"
+```
+
+#### Merge Commit（特殊情况）
+```bash
+# 适用场景: 大型功能或需要保留开发历史
+# 在 GitHub PR 页面选择 "Merge commit"
+```
+
+### 合并后操作
+```bash
+# 1. 删除本地分支
+git branch -d feature/sql-query-support
+
+# 2. 删除远程分支
+git push origin --delete feature/sql-query-support
+
+# 3. 更新本地 main
+git checkout main
+git pull origin main
+
+# 4. 关闭相关 Issue
+# 如果 PR 使用 "Closes #123"，Issue 会自动关闭
+```
+
+### 检查点
+- [ ] PR 标题是否清晰？
+- [ ] PR 描述是否完整？
+- [ ] 是否关联了 Issue？
+- [ ] CI 是否通过？
+- [ ] 审查是否通过？
+- [ ] 文档是否更新？
+- [ ] 合并后是否删除分支？
+- [ ] Issue 是否关闭？
+
+---
+
+## 13. 代码合并阶段
 
 ### 合并前检查
 - [ ] 所有审查意见已处理
