@@ -98,7 +98,15 @@ export class SQLToQueryBuilderTranslator {
 
     // 处理普通比较操作
     if (this.isColumnReference(left) && this.isLiteral(right)) {
-      const field = (left as ColumnReference).column;
+      let field = (left as ColumnReference).column;
+      // 处理嵌套的 column 对象
+      if (typeof field !== 'string' && field) {
+        if (field.expr && field.expr.value) {
+          field = field.expr.value;
+        } else if (field.value) {
+          field = field.value;
+        }
+      }
       const value = (right as LiteralValue).value;
 
       // 映射操作符
@@ -107,7 +115,15 @@ export class SQLToQueryBuilderTranslator {
         builder.where(field, mappedOperator as any, value);
       }
     } else if (this.isLiteral(left) && this.isColumnReference(right)) {
-      const field = (right as ColumnReference).column;
+      let field = (right as ColumnReference).column;
+      // 处理嵌套的 column 对象
+      if (typeof field !== 'string' && field) {
+        if (field.expr && field.expr.value) {
+          field = field.expr.value;
+        } else if (field.value) {
+          field = field.value;
+        }
+      }
       const value = (left as LiteralValue).value;
 
       // 反向操作符

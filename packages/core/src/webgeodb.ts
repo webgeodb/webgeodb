@@ -14,7 +14,8 @@ import {
   PreparedSQLStatement,
   SQLExecuteOptions,
   SQLExecuteResult,
-  QueryPlan
+  QueryPlan,
+  Parser
 } from './sql';
 import { EngineRegistry } from './spatial/engine-registry';
 import type { SpatialEngine } from './spatial/spatial-engine';
@@ -442,7 +443,6 @@ export class WebGeoDB {
    * ```
    */
   explain(sql: string): QueryPlan {
-    const { Parser } = require('./sql');
     const parser = new Parser();
     const parseResult = parser.parse(sql);
 
