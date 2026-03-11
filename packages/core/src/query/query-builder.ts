@@ -9,7 +9,7 @@ import type {
 import type { IndexedDBStorage } from '../storage';
 import type { SpatialIndex } from '../index/spatial-index';
 import type { SpatialEngine } from '../spatial/spatial-engine';
-import { getBBox, bboxIntersects, bboxContains } from '../utils';
+import { getBBox, bboxIntersects, bboxContains, isEmptyGeometry } from '../utils';
 import { EngineRegistry } from '../spatial/engine-registry';
 import { globalGeometryCache } from '../spatial/geometry-cache';
 import { MultiConditionOptimizer, optimizeMultiConditions } from './multi-condition-optimizer';
@@ -166,6 +166,12 @@ export class QueryBuilder<T = any> {
    * 执行查询
    */
   async toArray(): Promise<T[]> {
+    // 检查数据库是否已关闭
+    if (!this.storage.isOpen) {
+      console.warn('Database is closed, returning empty results');
+      return [];
+    }
+
     let results: T[] = [];
 
     // 1. 空间查询 (使用空间索引)
@@ -208,84 +214,112 @@ export class QueryBuilder<T = any> {
       throw new Error('Spatial index not available');
     }
 
-    // 使用多条件优化器合并边界框
-    let searchBBox: BBox;
-
-    if (this.spatialConditions.length > 1) {
-      // 多条件：使用优化器合并边界框
-      const optimizer = new MultiConditionOptimizer();
-      const optimization = optimizer.optimize(this.spatialConditions);
-
-      if (optimization.mergedBBox) {
-        searchBBox = optimization.mergedBBox;
-        console.log(`🚀 多条件优化: ${optimization.strategy}, 预期提升: ${optimization.expectedImprovement.toFixed(2)}x`);
-      } else {
-        // 回退到第一个条件的边界框
-        searchBBox = getBBox(this.spatialConditions[0].geometry);
-      }
-    } else {
-      // 单条件：直接使用第一个条件的边界框
-      searchBBox = getBBox(this.spatialConditions[0].geometry);
+    // 检查数据库是否已关闭
+    if (!this.storage.isOpen) {
+      console.warn('Database is closed during spatial query, returning empty results');
+      return [];
     }
 
-    // 使用空间索引搜索
-    const candidates = this.spatialIndex.search(searchBBox);
+    try {
+      // 使用多条件优化器合并边界框
+      let searchBBox: BBox;
 
-    // 从数据库加载候选项
-    const ids = candidates.map((item: any) => item.id);
-    const table = this.storage.getTable<T>(this.tableName);
-    const results = await table.where('id').anyOf(ids as string[]).toArray();
+      if (this.spatialConditions.length > 1) {
+        // 多条件：使用优化器合并边界框
+        const optimizer = new MultiConditionOptimizer();
+        const optimization = optimizer.optimize(this.spatialConditions);
 
-    return results;
+        if (optimization.mergedBBox) {
+          searchBBox = optimization.mergedBBox;
+          console.log(`🚀 多条件优化: ${optimization.strategy}, 预期提升: ${optimization.expectedImprovement.toFixed(2)}x`);
+        } else {
+          // 回退到第一个条件的边界框
+          searchBBox = getBBox(this.spatialConditions[0].geometry);
+        }
+      } else {
+        // 单条件：直接使用第一个条件的边界框
+        searchBBox = getBBox(this.spatialConditions[0].geometry);
+      }
+
+      // 使用空间索引搜索
+      const candidates = this.spatialIndex.search(searchBBox);
+
+      // 从数据库加载候选项
+      const ids = candidates.map((item: any) => item.id);
+      const table = this.storage.getTable<T>(this.tableName);
+      const results = await table.where('id').anyOf(ids as string[]).toArray();
+
+      return results;
+    } catch (error: any) {
+      // 捕获 DatabaseClosedError 并返回空结果
+      if (error.name === 'DatabaseClosedError') {
+        console.warn('Database was closed during spatial query execution, returning empty results');
+        return [];
+      }
+      throw error;
+    }
   }
 
   /**
    * 执行属性查询
    */
   private async executeAttributeQuery(): Promise<T[]> {
-    const table = this.storage.getTable<T>(this.tableName);
-
-    if (this.conditions.length === 0) {
-      return table.toArray();
+    // 检查数据库是否已关闭
+    if (!this.storage.isOpen) {
+      console.warn('Database is closed during attribute query, returning empty results');
+      return [];
     }
 
-    // 使用第一个条件作为主查询
-    const firstCondition = this.conditions[0];
+    try {
+      const table = this.storage.getTable<T>(this.tableName);
 
-    switch (firstCondition.operator) {
-      case '=':
-        return table.where(firstCondition.field).equals(firstCondition.value).toArray();
-      case '!=':
-        return table.where(firstCondition.field).notEqual(firstCondition.value).toArray();
-      case '>':
-        return table.where(firstCondition.field).above(firstCondition.value).toArray();
-      case '>=':
-        return table.where(firstCondition.field).aboveOrEqual(firstCondition.value).toArray();
-      case '<':
-        return table.where(firstCondition.field).below(firstCondition.value).toArray();
-      case '<=':
-        return table.where(firstCondition.field).belowOrEqual(firstCondition.value).toArray();
-      case 'in':
-        return table.where(firstCondition.field).anyOf(firstCondition.value).toArray();
-      case 'not in':
-        return table.where(firstCondition.field).noneOf(firstCondition.value).toArray();
-      case 'like':
-        // Like 操作符需要全表扫描后过滤
-        return table.toArray().then(items =>
-          items.filter(item => {
+      if (this.conditions.length === 0) {
+        return await table.toArray();
+      }
+
+      // 使用第一个条件作为主查询
+      const firstCondition = this.conditions[0];
+
+      switch (firstCondition.operator) {
+        case '=':
+          return await table.where(firstCondition.field).equals(firstCondition.value).toArray();
+        case '!=':
+          return await table.where(firstCondition.field).notEqual(firstCondition.value).toArray();
+        case '>':
+          return await table.where(firstCondition.field).above(firstCondition.value).toArray();
+        case '>=':
+          return await table.where(firstCondition.field).aboveOrEqual(firstCondition.value).toArray();
+        case '<':
+          return await table.where(firstCondition.field).below(firstCondition.value).toArray();
+        case '<=':
+          return await table.where(firstCondition.field).belowOrEqual(firstCondition.value).toArray();
+        case 'in':
+          return await table.where(firstCondition.field).anyOf(firstCondition.value).toArray();
+        case 'not in':
+          return await table.where(firstCondition.field).noneOf(firstCondition.value).toArray();
+        case 'like':
+          // Like 操作符需要全表扫描后过滤
+          const items1 = await table.toArray();
+          return items1.filter(item => {
             const value = this.getNestedValue(item, firstCondition.field);
             return typeof value === 'string' && value.includes(firstCondition.value);
-          })
-        );
-      case 'not like':
-        return table.toArray().then(items =>
-          items.filter(item => {
+          });
+        case 'not like':
+          const items2 = await table.toArray();
+          return items2.filter(item => {
             const value = this.getNestedValue(item, firstCondition.field);
             return typeof value === 'string' && !value.includes(firstCondition.value);
-          })
-        );
-      default:
-        throw new Error(`Unsupported operator: ${firstCondition.operator}`);
+          });
+        default:
+          throw new Error(`Unsupported operator: ${firstCondition.operator}`);
+      }
+    } catch (error: any) {
+      // 捕获 DatabaseClosedError 并返回空结果
+      if (error.name === 'DatabaseClosedError') {
+        console.warn('Database was closed during query execution, returning empty results');
+        return [];
+      }
+      throw error;
     }
   }
 
@@ -293,13 +327,16 @@ export class QueryBuilder<T = any> {
    * 应用属性过滤
    */
   private applyAttributeFilters(results: T[]): T[] {
-    if (this.conditions.length <= 1) {
+    if (this.conditions.length === 0) {
       return results;
     }
 
-    // 应用剩余条件
+    // 如果有空间查询，需要应用所有属性条件
+    // 如果只有属性查询，第一个条件已经在 executeAttributeQuery 中应用了
+    const startIndex = this.spatialConditions.length > 0 ? 0 : 1;
+
     return results.filter(item => {
-      for (let i = 1; i < this.conditions.length; i++) {
+      for (let i = startIndex; i < this.conditions.length; i++) {
         const condition = this.conditions[i];
         const value = this.getNestedValue(item, condition.field);
 
@@ -362,6 +399,11 @@ export class QueryBuilder<T = any> {
       for (const condition of this.spatialConditions) {
         const geometry = (item as any)[condition.field];
         if (!geometry) {
+          return false;
+        }
+
+        // 检查是否为空几何体
+        if (isEmptyGeometry(geometry)) {
           return false;
         }
 

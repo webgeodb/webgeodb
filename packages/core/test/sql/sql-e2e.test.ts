@@ -74,7 +74,14 @@ describe('SQL 功能端到端验证', () => {
   });
 
   afterEach(async () => {
-    await db.close();
+    try {
+      await db.close();
+    } catch (error: any) {
+      // 忽略 DatabaseClosedError，这在测试清理时是预期的
+      if (error.name !== 'DatabaseClosedError') {
+        throw error;
+      }
+    }
   });
 
   it('应该执行简单的 SELECT 查询', async () => {

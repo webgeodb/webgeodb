@@ -71,6 +71,15 @@ export class WebGeoDB {
    * 关闭数据库
    */
   async close(): Promise<void> {
+    // 先清除查询缓存，避免 DatabaseClosedError
+    try {
+      SQLExecutor.invalidateCache();
+    } catch (error) {
+      // 忽略缓存清理错误，继续关闭数据库
+      console.warn('Query cache cleanup failed:', error);
+    }
+
+    // 关闭数据库
     await this.storage.close();
   }
 
@@ -225,7 +234,7 @@ export class WebGeoDB {
       /**
        * 创建空间索引
        */
-      createIndex(field: string, config?: IndexConfig): void {
+      async createIndex(field: string, config?: IndexConfig): Promise<void> {
         const schema = self.schemas[tableName];
         if (schema[field] !== 'geometry') {
           throw new Error(`Field ${field} is not a geometry field`);
@@ -236,7 +245,7 @@ export class WebGeoDB {
 
         // 如果配置了自动维护,加载现有数据
         if (config?.auto !== false) {
-          self.loadSpatialIndex(tableName, field);
+          await self.loadSpatialIndex(tableName, field);
         }
       },
 

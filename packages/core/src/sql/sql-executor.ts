@@ -218,6 +218,12 @@ export class SQLExecutor {
     spatialIndex: SpatialIndex | null,
     spatialEngine: SpatialEngine
   ): Promise<any[]> {
+    // 检查数据库是否已关闭
+    if (!storage.isOpen) {
+      console.warn('Database is closed, returning empty results');
+      return [];
+    }
+
     // 创建 QueryBuilder
     const QueryBuilderClass = (await import('../query/query-builder')).QueryBuilder;
     const builder = new QueryBuilderClass(
@@ -264,6 +270,12 @@ export class SQLExecutor {
     storage: IndexedDBStorage,
     spatialIndex: SpatialIndex | null
   ): Promise<any[]> {
+    // 检查数据库是否已关闭
+    if (!storage.isOpen) {
+      console.warn('Database is closed, cannot execute INSERT');
+      return [];
+    }
+
     const table = storage.getTable(statement.table);
     const results: string[] = [];
 
@@ -293,6 +305,12 @@ export class SQLExecutor {
     storage: IndexedDBStorage,
     spatialIndex: SpatialIndex | null
   ): Promise<any[]> {
+    // 检查数据库是否已关闭
+    if (!storage.isOpen) {
+      console.warn('Database is closed, cannot execute UPDATE');
+      return [];
+    }
+
     const table = storage.getTable(statement.table);
 
     // 如果没有 WHERE 子句，更新所有行
@@ -318,6 +336,12 @@ export class SQLExecutor {
     storage: IndexedDBStorage,
     spatialIndex: SpatialIndex | null
   ): Promise<any[]> {
+    // 检查数据库是否已关闭
+    if (!storage.isOpen) {
+      console.warn('Database is closed, cannot execute DELETE');
+      return [];
+    }
+
     const table = storage.getTable(statement.table);
 
     // 如果没有 WHERE 子句，删除所有行
