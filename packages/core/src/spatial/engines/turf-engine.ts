@@ -26,6 +26,7 @@ import type {
 } from '../spatial-engine';
 import type { SpatialPredicate } from '../../types/database';
 import type { GeometryType } from '../../types/geometry';
+import { isEmptyGeometry } from '../../utils/bbox';
 
 /**
  * Turf.js 引擎能力
@@ -92,6 +93,21 @@ export class TurfEngine implements SpatialEngine {
       return false;
     }
 
+    // 检查是否为空几何体
+    if (isEmptyGeometry(g1) || isEmptyGeometry(g2)) {
+      return false;
+    }
+
+    // 检查是否为自包含（相同的几何对象）
+    // 在空间查询中，自包含应该返回 false
+    try {
+      if (this.equals(g1, g2)) {
+        return false;
+      }
+    } catch {
+      // equals 可能对某些无效几何抛出错误，忽略并继续
+    }
+
     const f1 = this.toFeature(g1);
     const f2 = this.toFeature(g2);
 
@@ -107,6 +123,21 @@ export class TurfEngine implements SpatialEngine {
   }
 
   within(g1: Geometry, g2: Geometry): boolean {
+    // 检查是否为空几何体
+    if (isEmptyGeometry(g1) || isEmptyGeometry(g2)) {
+      return false;
+    }
+
+    // 检查是否为自包含（相同的几何对象）
+    // 在空间查询中，自包含应该返回 false
+    try {
+      if (this.equals(g1, g2)) {
+        return false;
+      }
+    } catch {
+      // equals 可能对某些无效几何抛出错误，忽略并继续
+    }
+
     const f1 = this.toFeature(g1);
     const f2 = this.toFeature(g2);
 

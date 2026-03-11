@@ -25,14 +25,26 @@ export interface OptimizedPredicateResult {
  * 相交判断优化版本
  *
  * 优化策略：
- * 1. 边界框预检查（快速失败）
- * 2. 点-点特殊处理
- * 3. 直接坐标操作（避免 Feature 包装）
+ * 1. 点-点特殊处理（最快路径，跳过边界框检查）
+ * 2. 边界框预检查（快速失败）
+ * 3. 点-线、点-面特殊处理
+ * 4. 完整计算
  */
 export function intersectsOptimized(g1: Geometry, g2: Geometry): OptimizedPredicateResult {
   const startTime = performance.now();
 
-  // 策略 1: 边界框预检查
+  // 策略 1: 点-点特殊处理（最高优先级，跳过边界框检查）
+  if (g1.type === 'Point' && g2.type === 'Point') {
+    const result = pointEquals(g1 as Point, g2 as Point);
+    return {
+      result,
+      executionTime: (performance.now() - startTime) * 1000,
+      bboxOptimized: false,
+      optimization: 'direct-coordinates'
+    };
+  }
+
+  // 策略 2: 边界框预检查（快速失败）
   const bbox1 = getBBox(g1);
   const bbox2 = getBBox(g2);
 
@@ -45,24 +57,13 @@ export function intersectsOptimized(g1: Geometry, g2: Geometry): OptimizedPredic
     };
   }
 
-  // 策略 2: 点-点特殊处理
-  if (g1.type === 'Point' && g2.type === 'Point') {
-    const result = pointEquals(g1 as Point, g2 as Point);
-    return {
-      result,
-      executionTime: (performance.now() - startTime) * 1000,
-      bboxOptimized: false,
-      optimization: 'direct-coordinates'
-    };
-  }
-
   // 策略 3: 点-线、点-面特殊处理
   if (g1.type === 'Point' && (g2.type === 'LineString' || g2.type === 'Polygon')) {
     const result = pointIntersectsGeometry(g1 as Point, g2);
     return {
       result,
       executionTime: (performance.now() - startTime) * 1000,
-      bboxOptimized: false,
+      bboxOptimized: true, // 边界框检查已通过
       optimization: 'direct-coordinates'
     };
   }
@@ -72,7 +73,7 @@ export function intersectsOptimized(g1: Geometry, g2: Geometry): OptimizedPredic
     return {
       result,
       executionTime: (performance.now() - startTime) * 1000,
-      bboxOptimized: false,
+      bboxOptimized: true, // 边界框检查已通过
       optimization: 'direct-coordinates'
     };
   }

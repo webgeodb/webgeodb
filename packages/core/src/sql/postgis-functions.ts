@@ -105,28 +105,29 @@ export class PostGISFunctionRegistry {
    * 解析几何对象
    */
   parseGeometry(input: any): Geometry | undefined {
-    // 已经是 GeoJSON
+    // 已经是 GeoJSON 对象
     if (input && typeof input === 'object' && 'type' in input && 'coordinates' in input) {
       return input as Geometry;
     }
 
-    // WKT 字符串
+    // 字符串：先尝试 GeoJSON，再尝试 WKT
     if (typeof input === 'string') {
+      // 先尝试解析为 GeoJSON 字符串
+      try {
+        const parsed = JSON.parse(input);
+        if (parsed && typeof parsed === 'object' && 'type' in parsed && 'coordinates' in parsed) {
+          return parsed as Geometry;
+        }
+      } catch (error) {
+        // JSON.parse 失败，继续尝试 WKT
+      }
+
+      // 再尝试解析为 WKT 字符串
       try {
         const parsed = wellknown.parse(input);
         return parsed ?? undefined;
       } catch (error) {
-        console.error('WKT 解析失败:', error);
-        return undefined;
-      }
-    }
-
-    // GeoJSON 字符串
-    if (typeof input === 'string') {
-      try {
-        const parsed = JSON.parse(input);
-        return parsed ?? undefined;
-      } catch (error) {
+        console.error('几何解析失败 (尝试了 GeoJSON 和 WKT):', error);
         return undefined;
       }
     }
@@ -251,12 +252,21 @@ class STBufferFunction implements PostGISFunction {
     const units = args.units || 'meters';
 
     if (geometry) {
-      const buffered = this.spatialEngine.buffer(geometry, radius, units as 'meters' | 'kilometers' | 'miles' | 'degrees' | 'radians' | 'inches' | 'yards' | 'centimeters' | 'nauticalmiles' | undefined);
-      return {
-        method: 'literal',
-        params: [buffered],
-        geometry: buffered
-      };
+      try {
+        const buffered = this.spatialEngine.buffer(geometry, radius, units as 'meters' | 'kilometers' | 'miles' | 'degrees' | 'radians' | 'inches' | 'yards' | 'centimeters' | 'nauticalmiles' | undefined);
+        return {
+          method: 'literal',
+          params: [buffered],
+          geometry: buffered
+        };
+      } catch (error) {
+        // 无效几何类型或其他错误，返回空结果
+        return {
+          method: 'literal',
+          params: [undefined],
+          geometry: undefined
+        };
+      }
     }
 
     return {
