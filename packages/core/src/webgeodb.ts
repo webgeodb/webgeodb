@@ -9,6 +9,15 @@ import { IndexedDBStorage } from './storage';
 import { HybridSpatialIndex } from './index/hybrid-index';
 import { QueryBuilder } from './query';
 import { getBBox } from './utils';
+import {
+  SQLExecutor,
+  PreparedSQLStatement,
+  SQLExecuteOptions,
+  SQLExecuteResult,
+  QueryPlan
+} from './sql';
+import { EngineRegistry } from './spatial/engine-registry';
+import type { SpatialEngine } from './spatial/spatial-engine';
 
 /**
  * WebGeoDB 核心类
@@ -357,10 +366,119 @@ export class WebGeoDB {
   }
 
   /**
-   * SQL 查询 (简化版)
+   * SQL 查询
+   * @param sql SQL 语句
+   * @param options 执行选项
+   * @returns 查询结果
+   *
+   * @example
+   * ```typescript
+   * // 简单查询
+   * const results = await db.query('SELECT * FROM features WHERE type = ?', ['poi']);
+   *
+   * // 空间查询
+   * const nearby = await db.query(`
+   *   SELECT * FROM features
+   *   WHERE ST_DWithin(geometry, ST_MakePoint(116.4, 39.9), 1000)
+   * `);
+   *
+   * // 使用参数化查询
+   * const stmt = db.prepare('SELECT * FROM features WHERE type = ? AND rating >= ?');
+   * const pois = await stmt.execute(['restaurant', 4.0]);
+   * ```
    */
-  async query(sql: string): Promise<any[]> {
-    // TODO: 实现 SQL 解析器
-    throw new Error('SQL query not implemented yet');
+  async query(sql: string, options?: SQLExecuteOptions): Promise<any[]> {
+    // 获取默认空间引擎
+    const spatialEngine = EngineRegistry.getDefaultEngine();
+
+    const result = await SQLExecutor.execute(
+      sql,
+      this.storage,
+      null, // 不使用空间索引（在查询构建器中处理）
+      spatialEngine,
+      options || {}
+    );
+
+    return result.data;
+  }
+
+  /**
+   * 创建预编译 SQL 语句
+   * @param sql SQL 语句模板
+   * @returns 预编译语句
+   *
+   * @example
+   * ```typescript
+   * const stmt = db.prepare('SELECT * FROM features WHERE type = ? AND rating >= ?');
+   * const pois = await stmt.execute(['restaurant', 4.0]);
+   *
+   * // 查看查询计划
+   * const plan = stmt.explain();
+   * console.log(plan);
+   * ```
+   */
+  prepare(sql: string): PreparedSQLStatement {
+    const spatialEngine = EngineRegistry.getDefaultEngine();
+
+    return SQLExecutor.prepare(
+      sql,
+      this.storage,
+      null, // 不使用空间索引（在查询构建器中处理）
+      spatialEngine
+    );
+  }
+
+  /**
+   * 分析查询计划
+   * @param sql SQL 语句
+   * @returns 查询计划
+   *
+   * @example
+   * ```typescript
+   * const plan = db.explain('SELECT * FROM features WHERE type = ?');
+   * console.log('表:', plan.table);
+   * console.log('列:', plan.columns);
+   * console.log('估算成本:', plan.estimatedCost);
+   * ```
+   */
+  explain(sql: string): QueryPlan {
+    const { Parser } = require('./sql');
+    const parser = new Parser();
+    const parseResult = parser.parse(sql);
+
+    return SQLExecutor.explain(parseResult);
+  }
+
+  /**
+   * 使 SQL 查询缓存失效
+   * @param tableName 表名（可选，不提供则清空所有缓存）
+   *
+   * @example
+   * ```typescript
+   * // 使特定表的缓存失效
+   * db.invalidateQueryCache('features');
+   *
+   * // 使所有缓存失效
+   * db.invalidateQueryCache();
+   * ```
+   */
+  invalidateQueryCache(tableName?: string): void {
+    SQLExecutor.invalidateCache(tableName);
+  }
+
+  /**
+   * 获取 SQL 查询缓存统计
+   * @returns 缓存统计信息
+   *
+   * @example
+   * ```typescript
+   * const stats = db.getQueryCacheStats();
+   * console.log('缓存大小:', stats.size);
+   * console.log('最大容量:', stats.maxSize);
+   * console.log('总访问次数:', stats.totalAccessCount);
+   * ```
+   */
+  getQueryCacheStats() {
+    return SQLExecutor.getCacheStats();
   }
 }

@@ -16,8 +16,9 @@
 - ⚡ **高性能**: 查询响应时间 < 1s,支持 100MB-1GB 数据集
 - 🔌 **可扩展**: 插件化架构,按需加载功能模块
 - 📱 **离线优先**: 完整的离线支持,适合边缘计算
-- 🛠️ **易用性**: 类 SQL API + 链式 API,学习成本低
+- 🛠️ **易用性**: SQL 查询 + 链式 API,学习成本低
 - 🌐 **跨平台**: 支持现代浏览器 (Chrome 90+, Firefox 88+, Safari 14+)
+- 🆕 **SQL 支持**: PostgreSQL/PostGIS 兼容的 SQL 查询接口
 
 ## 快速开始
 
@@ -63,12 +64,24 @@ await db.features.insert({
   }
 });
 
-// 空间查询
+// 空间查询（链式 API）
 const results = await db.features
   .where('type', '=', 'poi')
   .distance('geometry', [30, 10], '<', 1000)
   .limit(10)
   .toArray();
+
+// SQL 查询
+const sqlResults = await db.query(`
+  SELECT * FROM features
+  WHERE type = 'poi'
+    AND ST_DWithin(geometry, ST_MakePoint(30, 10), 1000)
+  LIMIT 10
+`);
+
+// 参数化查询
+const stmt = db.prepare('SELECT * FROM features WHERE type = $1');
+const pois = await stmt.execute(['poi']);
 ```
 
 ## 架构
@@ -80,8 +93,9 @@ const results = await db.features
                           ↓
 ┌─────────────────────────────────────────────────────────┐
 │                 查询层 (Query Engine)                    │
-│  - 类 SQL 查询 API                                       │
+│  - SQL 查询 API (PostgreSQL/PostGIS 兼容)              │
 │  - 链式查询 API                                          │
+│  - SQL 解析器 → 查询转换 → 执行引擎                      │
 └─────────────────────────────────────────────────────────┘
                           ↓
 ┌──────────────────────┬──────────────────────────────────┐
@@ -93,6 +107,7 @@ const results = await db.features
 ┌─────────────────────────────────────────────────────────┐
 │                    存储层 (Storage)                      │
 │  - IndexedDB (Dexie.js 封装)                            │
+│  - 查询缓存 (LRU)                                         │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -103,8 +118,10 @@ const results = await db.features
 - `@webgeodb/core` - 核心引擎 (< 300KB) ✅ 已发布
   - ✅ 存储层 (IndexedDB + Dexie.js)
   - ✅ 查询引擎 (链式 API)
+  - ✅ SQL 查询支持 (PostgreSQL/PostGIS 兼容) 🆕
   - ✅ 空间索引 (R-tree + Static)
   - ✅ 几何计算 (Turf.js)
+  - ✅ 查询缓存 (LRU)
 
 ### 扩展包 (开发中)
 
@@ -274,6 +291,12 @@ pnpm lint
   - [x] 多条件查询 (嵌套属性支持)
   - [x] 距离查询 (distance)
   - [x] 排序和分页
+  - [x] **SQL 查询支持 🆕** (2026-03-11)
+    - [x] SQL 解析器 (node-sql-parser)
+    - [x] PostgreSQL/PostGIS 兼容
+    - [x] 参数化查询和预编译语句
+    - [x] 查询缓存优化
+    - [x] 完整的 TypeScript 支持
 - [x] 几何计算集成 (Turf.js)
 - [x] 测试基础设施
   - [x] 浏览器自动化测试 (Vitest + Playwright)
@@ -286,6 +309,7 @@ pnpm lint
 - ✅ 3 大浏览器兼容
 - ✅ 核心功能 100% 可用
 - ✅ 完整的测试和文档体系
+- ✅ **SQL 查询功能已实现 (15/15 单元测试通过)** 🆕
 
 ---
 

@@ -296,6 +296,252 @@ class QueryBuilder<T = any> {
 }
 ```
 
+## SQL 查询 API 🆕
+
+### WebGeoDB SQL 方法
+
+WebGeoDB 提供完整的 PostgreSQL/PostGIS 兼容 SQL 查询接口。
+
+```typescript
+class WebGeoDB {
+  /**
+   * 执行 SQL 查询
+   * @param sql SQL 语句
+   * @param options 执行选项
+   */
+  async query(
+    sql: string,
+    options?: SQLExecuteOptions
+  ): Promise<any[]>;
+
+  /**
+   * 创建预编译语句
+   * @param sql SQL 语句模板
+   */
+  prepare(sql: string): PreparedSQLStatement;
+
+  /**
+   * 分析查询计划
+   * @param sql SQL 语句
+   */
+  explain(sql: string): QueryPlan;
+
+  /**
+   * 使查询缓存失效
+   * @param tableName 表名（可选，不传则清空所有缓存）
+   */
+  invalidateQueryCache(tableName?: string): void;
+
+  /**
+   * 获取缓存统计
+   */
+  getQueryCacheStats(): SQLCacheStats;
+}
+```
+
+### SQLExecuteOptions
+
+SQL 查询执行选项。
+
+```typescript
+interface SQLExecuteOptions {
+  /**
+   * 参数化查询参数
+   * PostgreSQL 风格：$1, $2, $3...
+   */
+  params?: any[];
+
+  /**
+   * 是否使用缓存（默认 true）
+   */
+  useCache?: boolean;
+
+  /**
+   * 查询超时时间（毫秒）
+   */
+  timeout?: number;
+}
+```
+
+### PreparedSQLStatement
+
+预编译语句，用于重复执行相同结构的查询。
+
+```typescript
+class PreparedSQLStatement {
+  /**
+   * 执行预编译语句
+   * @param params 参数数组
+   */
+  async execute(params?: any[]): Promise<any[]>;
+
+  /**
+   * 获取查询计划
+   */
+  explain(): QueryPlan;
+
+  /**
+   * 获取原始 SQL
+   */
+  getSQL(): string;
+}
+```
+
+### QueryPlan
+
+查询执行计划，包含性能分析信息。
+
+```typescript
+interface QueryPlan {
+  /**
+   * 表名
+   */
+  table: string;
+
+  /**
+   * 选择的列
+   */
+  columns: string[];
+
+  /**
+   * 属性条件
+   */
+  attributeConditions: AttributeQueryCondition[];
+
+  /**
+   * 空间条件
+   */
+  spatialConditions: SQLSpatialQueryCondition[];
+
+  /**
+   * 排序规则
+   */
+  orderBy?: {
+    field: string;
+    direction: 'asc' | 'desc';
+  }[];
+
+  /**
+   * 限制数量
+   */
+  limit?: number;
+
+  /**
+   * 偏移量
+   */
+  offset?: number;
+
+  /**
+   * 预估查询成本
+   */
+  estimatedCost: number;
+
+  /**
+   * 使用的索引
+   */
+  indexes: string[];
+}
+```
+
+### SQLCacheStats
+
+查询缓存统计信息。
+
+```typescript
+interface SQLCacheStats {
+  /**
+   * 缓存大小
+   */
+  size: number;
+
+  /**
+   * 最大缓存大小
+   */
+  maxSize: number;
+
+  /**
+   * 缓存命中次数
+   */
+  hits: number;
+
+  /**
+   * 缓存未命中次数
+   */
+  misses: number;
+
+  /**
+   * 命中率
+   */
+  hitRate: number;
+}
+```
+
+### PostGIS 函数支持
+
+支持的空间函数列表：
+
+**空间关系谓词：**
+- `ST_Intersects(geom1, geom2)` - 相交判断
+- `ST_Contains(geom1, geom2)` - 包含判断
+- `ST_Within(geom1, geom2)` - 在内部判断
+- `ST_Equals(geom1, geom2)` - 相等判断
+- `ST_Disjoint(geom1, geom2)` - 分离判断
+- `ST_Touches(geom1, geom2)` - 接触判断
+- `ST_Crosses(geom1, geom2)` - 交叉判断
+- `ST_Overlaps(geom1, geom2)` - 重叠判断
+
+**距离函数：**
+- `ST_DWithin(geom, point, distance)` - 距离内判断
+- `ST_Distance(geom1, geom2)` - 距离计算
+
+**几何构造：**
+- `ST_MakePoint(x, y)` - 创建点
+- `ST_MakeLine(point1, point2)` - 创建线
+- `ST_Buffer(geom, radius, units)` - 缓冲区
+- `ST_Centroid(geom)` - 质心计算
+
+**几何转换：**
+- `ST_GeomFromText(wkt)` - WKT 转几何
+- `ST_AsText(geom)` - 几何转 WKT
+- `ST_AsBinary(geom)` - 几何转 WKB
+
+### SQL 使用示例
+
+```typescript
+import { WebGeoDB } from '@webgeodb/core';
+
+const db = new WebGeoDB({ name: 'my-db' });
+await db.open();
+
+// 简单查询
+const results = await db.query(`
+  SELECT * FROM features WHERE type = 'poi'
+`);
+
+// 参数化查询
+const pois = await db.query(`
+  SELECT * FROM features
+  WHERE type = $1 AND rating >= $2
+`, { params: ['restaurant', 4.0] });
+
+// PostGIS 空间查询
+const nearby = await db.query(`
+  SELECT * FROM features
+  WHERE ST_DWithin(geometry, ST_MakePoint(116.4, 39.9), 1000)
+`);
+
+// 预编译语句
+const stmt = db.prepare(`
+  SELECT * FROM features WHERE rating >= $1
+`);
+const highlyRated = await stmt.execute([4.0]);
+const topRated = await stmt.execute([5.0]);
+
+// 查询计划分析
+const plan = db.explain('SELECT * FROM features WHERE type = $1');
+console.log('预估成本:', plan.estimatedCost);
+```
+
 ## 优化谓词
 
 ### 优化的核心谓词
