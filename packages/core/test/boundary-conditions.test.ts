@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { WebGeoDB } from '../../src';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { WebGeoDB } from '../src';
 
 describe('Boundary Condition Tests', () => {
   let db: WebGeoDB;
@@ -416,7 +416,7 @@ describe('Boundary Condition Tests', () => {
       const [restaurants, cafes, limited, count] = await Promise.all(queryPromises);
 
       expect(restaurants.length).toBe(50);
-      expect(cafas.length).toBe(50);
+      expect(cafes.length).toBe(50);
       expect(limited.length).toBe(50);
       expect(count).toBe(100);
     });
