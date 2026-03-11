@@ -33,7 +33,14 @@ jobs:
         run: cd packages/core && pnpm exec playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run tests
-        run: cd packages/core && pnpm test --browser=${{ matrix.browser }}
+        run: |
+          if [ "${{ matrix.browser }}" = "chromium" ]; then
+            cd packages/core && pnpm test:chrome
+          elif [ "${{ matrix.browser }}" = "firefox" ]; then
+            cd packages/core && pnpm test:firefox
+          elif [ "${{ matrix.browser }}" = "webkit" ]; then
+            cd packages/core && pnpm test:webkit
+          fi
 
       - name: Upload coverage
         if: matrix.browser == 'chromium'
