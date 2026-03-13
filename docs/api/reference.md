@@ -657,31 +657,453 @@ export function cachedResult<G extends Geometry, R>(
 ): MethodDecorator;
 ```
 
-## 错误处理
+## 性能监控 API 🆕
+
+WebGeoDB 提供完整的性能监控系统，帮助您识别和优化性能瓶颈。
+
+### 监控方法
+
+```typescript
+class WebGeoDB {
+  /**
+   * 启用或禁用性能分析
+   * @param enabled 是否启用
+   */
+  async enableProfiling(enabled: boolean): Promise<void>;
+
+  /**
+   * 获取性能统计信息
+   */
+  async getStats(): Promise<PerformanceStats>;
+
+  /**
+   * 获取慢查询列表
+   * @param threshold 慢查询阈值（毫秒）
+   */
+  async getSlowQueries(threshold: number): Promise<SlowQuery[]>;
+
+  /**
+   * 生成性能报告
+   */
+  async getPerformanceReport(): Promise<PerformanceReport>;
+
+  /**
+   * 重置性能统计
+   */
+  async resetStats(): Promise<void>;
+
+  /**
+   * 获取查询缓存统计
+   */
+  getQueryCacheStats(): SQLCacheStats;
+}
+```
+
+### PerformanceStats
+
+性能统计信息。
+
+```typescript
+interface PerformanceStats {
+  /**
+   * 查询总次数
+   */
+  queryCount: number;
+
+  /**
+   * 平均查询时间（毫秒）
+   */
+  avgQueryTime: number;
+
+  /**
+   * 最小查询时间（毫秒）
+   */
+  minQueryTime: number;
+
+  /**
+   * 最大查询时间（毫秒）
+   */
+  maxQueryTime: number;
+
+  /**
+   * 索引命中率（0-1）
+   */
+  indexHitRate: number;
+
+  /**
+   * 缓存命中率（0-1）
+   */
+  cacheHitRate: number;
+
+  /**
+   * 内存使用（字节）
+   */
+  memoryUsage: number;
+
+  /**
+   * 慢查询数量
+   */
+  slowQueryCount: number;
+}
+```
+
+### SlowQuery
+
+慢查询记录。
+
+```typescript
+interface SlowQuery {
+  /**
+   * SQL 语句
+   */
+  sql: string;
+
+  /**
+   * 执行时间（毫秒）
+   */
+  duration: number;
+
+  /**
+   * 执行时间戳
+   */
+  timestamp: number;
+
+  /**
+   * 查询参数
+   */
+  params?: any[];
+
+  /**
+   * 查询计划
+   */
+  plan?: QueryPlan;
+}
+```
+
+### PerformanceReport
+
+完整的性能报告。
+
+```typescript
+interface PerformanceReport {
+  /**
+   * 统计信息
+   */
+  stats: PerformanceStats;
+
+  /**
+   * 慢查询列表
+   */
+  slowQueries: SlowQuery[];
+
+  /**
+   * 缓存统计
+   */
+  cacheStats: SQLCacheStats;
+
+  /**
+   * 索引使用情况
+   */
+  indexUsage: IndexUsageStats[];
+
+  /**
+   * 建议
+   */
+  recommendations: string[];
+}
+```
+
+### 使用示例
+
+```typescript
+import { WebGeoDB } from 'webgeodb-core';
+
+const db = new WebGeoDB('my-db');
+await db.open();
+
+// 启用性能分析
+await db.enableProfiling(true);
+
+// 执行一些查询
+await db.query('SELECT * FROM features WHERE type = $1', ['restaurant']);
+
+// 获取统计信息
+const stats = await db.getStats();
+console.log(`平均查询时间: ${stats.avgQueryTime}ms`);
+console.log(`索引命中率: ${(stats.indexHitRate * 100).toFixed(1)}%`);
+
+// 获取慢查询
+const slowQueries = await db.getSlowQueries(100);
+console.log(`发现 ${slowQueries.length} 个慢查询`);
+
+// 生成完整报告
+const report = await db.getPerformanceReport();
+console.log('性能报告:', report);
+
+// 重置统计
+await db.resetStats();
+```
+
+---
+
+## 错误处理 API 🆕
+
+WebGeoDB 提供完整的错误处理体系，包含 6 种结构化错误类型。
+
+### 错误类型
+
+```typescript
+/**
+ * 基础错误类
+ */
+class WebGeoDBError extends Error {
+  /**
+   * 错误代码
+   */
+  code: ErrorCode;
+
+  /**
+   * 错误上下文
+   */
+  context?: Record<string, any>;
+
+  /**
+   * 原始错误
+   */
+  originalError?: Error;
+
+  constructor(
+    code: ErrorCode,
+    message: string,
+    context?: Record<string, any>,
+    originalError?: Error
+  );
+}
+
+/**
+ * 数据库错误
+ */
+class DatabaseError extends WebGeoDBError {
+  // 数据库打开、关闭、连接等错误
+}
+
+/**
+ * 查询错误
+ */
+class QueryError extends WebGeoDBError {
+  // 查询构建、执行等错误
+}
+
+/**
+ * 验证错误
+ */
+class ValidationError extends WebGeoDBError {
+  // 数据验证、类型检查等错误
+}
+
+/**
+ * 索引错误
+ */
+class IndexError extends WebGeoDBError {
+  // 索引创建、维护等错误
+}
+
+/**
+ * SQL 错误
+ */
+class SQLError extends WebGeoDBError {
+  // SQL 解析、执行等错误
+}
+
+/**
+ * 存储错误
+ */
+class StorageError extends WebGeoDBError {
+  // IndexedDB 存储相关错误
+}
+```
+
+### ErrorCode 枚举
+
+```typescript
+enum ErrorCode {
+  // 数据库错误
+  DATABASE_CLOSED = 'DATABASE_CLOSED',
+  DATABASE_NOT_FOUND = 'DATABASE_NOT_FOUND',
+  DATABASE_VERSION_ERROR = 'DATABASE_VERSION_ERROR',
+
+  // 查询错误
+  QUERY_EXECUTION_FAILED = 'QUERY_EXECUTION_FAILED',
+  INVALID_QUERY = 'INVALID_QUERY',
+  UNSUPPORTED_OPERATOR = 'UNSUPPORTED_OPERATOR',
+
+  // 验证错误
+  VALIDATION_FAILED = 'VALIDATION_FAILED',
+  INVALID_GEOMETRY = 'INVALID_GEOMETRY',
+  INVALID_FIELD = 'INVALID_FIELD',
+
+  // 索引错误
+  INDEX_NOT_FOUND = 'INDEX_NOT_FOUND',
+  INDEX_NOT_AVAILABLE = 'INDEX_NOT_AVAILABLE',
+  INDEX_CREATION_FAILED = 'INDEX_CREATION_FAILED',
+
+  // SQL 错误
+  SQL_PARSE_ERROR = 'SQL_PARSE_ERROR',
+  SQL_EXECUTION_ERROR = 'SQL_EXECUTION_ERROR',
+  UNKNOWN_SPATIAL_PREDICATE = 'UNKNOWN_SPATIAL_PREDICATE',
+
+  // 存储错误
+  STORAGE_ERROR = 'STORAGE_ERROR',
+  STORAGE_QUOTA_EXCEEDED = 'STORAGE_QUOTA_EXCEEDED',
+
+  // 空间引擎错误
+  SPATIAL_ENGINE_REQUIRED = 'SPATIAL_ENGINE_REQUIRED',
+  SPATIAL_ENGINE_ERROR = 'SPATIAL_ENGINE_ERROR',
+
+  // 其他
+  UNKNOWN_ERROR = 'UNKNOWN_ERROR'
+}
+```
+
+### ErrorFactory
+
+错误工厂，用于创建结构化错误。
+
+```typescript
+class ErrorFactory {
+  /**
+   * 创建数据库错误
+   */
+  static databaseError(
+    code: ErrorCode,
+    message: string,
+    context?: Record<string, any>,
+    originalError?: Error
+  ): DatabaseError;
+
+  /**
+   * 创建查询错误
+   */
+  static queryError(
+    code: ErrorCode,
+    message: string,
+    context?: Record<string, any>,
+    originalError?: Error
+  ): QueryError;
+
+  /**
+   * 创建验证错误
+   */
+  static validationError(
+    code: ErrorCode,
+    message: string,
+    context?: Record<string, any>,
+    originalError?: Error
+  ): ValidationError;
+
+  /**
+   * 创建索引错误
+   */
+  static indexError(
+    code: ErrorCode,
+    message: string,
+    context?: Record<string, any>,
+    originalError?: Error
+  ): IndexError;
+
+  /**
+   * 创建 SQL 错误
+   */
+  static sqlError(
+    code: ErrorCode,
+    message: string,
+    context?: Record<string, any>,
+    originalError?: Error
+  ): SQLError;
+
+  /**
+   * 创建存储错误
+   */
+  static storageError(
+    code: ErrorCode,
+    message: string,
+    context?: Record<string, any>,
+    originalError?: Error
+  ): StorageError;
+}
+```
+
+### 错误处理示例
+
+```typescript
+import {
+  WebGeoDB,
+  DatabaseError,
+  QueryError,
+  ValidationError,
+  SQLError,
+  ErrorCode
+} from 'webgeodb-core';
+
+const db = new WebGeoDB('my-db');
+
+try {
+  await db.open();
+} catch (error) {
+  if (error instanceof DatabaseError) {
+    console.error('数据库错误:', error.code, error.message);
+    console.error('上下文:', error.context);
+
+    if (error.code === ErrorCode.DATABASE_CLOSED) {
+      // 处理数据库关闭错误
+    }
+  }
+}
+
+try {
+  await db.insert('features', invalidData);
+} catch (error) {
+  if (error instanceof ValidationError) {
+    console.error('验证错误:', error.message);
+    console.error('无效字段:', error.context?.field);
+  }
+}
+
+try {
+  await db.query('SELECT * FROM invalid_table');
+} catch (error) {
+  if (error instanceof SQLError) {
+    console.error('SQL 错误:', error.message);
+    console.error('SQL 语句:', error.context?.sql);
+  }
+}
+
+// 通用错误处理
+try {
+  await db.table('features').toArray();
+} catch (error) {
+  if (error instanceof WebGeoDBError) {
+    console.error('WebGeoDB 错误:');
+    console.error('- 代码:', error.code);
+    console.error('- 消息:', error.message);
+    console.error('- 上下文:', error.context);
+    console.error('- 原始错误:', error.originalError);
+  } else {
+    console.error('未知错误:', error);
+  }
+}
+```
 
 ### 常见错误
 
-```typescript
-// 引擎未找到
-class EngineNotFoundError extends Error {
-  constructor(engineName: string);
-}
-
-// 引擎未初始化
-class EngineNotInitializedError extends Error {
-  constructor(engineName: string);
-}
-
-// 不支持的谓词
-class UnsupportedPredicateError extends Error {
-  constructor(predicate: string, engineName: string);
-}
-
-// 几何类型不支持
-class UnsupportedGeometryTypeError extends Error {
-  constructor(geometryType: string, engineName: string);
-}
-```
+| 错误类型 | 错误代码 | 原因 | 解决方案 |
+|---------|---------|------|----------|
+| DatabaseError | DATABASE_CLOSED | 数据库未打开或已关闭 | 调用 `db.open()` |
+| QueryError | QUERY_EXECUTION_FAILED | 查询执行失败 | 检查查询语法和数据 |
+| ValidationError | INVALID_GEOMETRY | 几何对象无效 | 使用有效的 GeoJSON 格式 |
+| IndexError | INDEX_NOT_FOUND | 索引不存在 | 先创建索引 |
+| SQLError | SQL_PARSE_ERROR | SQL 解析失败 | 检查 SQL 语法 |
+| StorageError | STORAGE_QUOTA_EXCEEDED | 存储配额已满 | 清理旧数据 |
 
 ## 事件
 
