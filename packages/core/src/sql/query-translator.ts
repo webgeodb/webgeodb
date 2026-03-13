@@ -96,41 +96,59 @@ export class SQLToQueryBuilderTranslator {
       return;
     }
 
+    // 处理 AND/OR 逻辑运算符
+    if (operator === 'AND' || operator === 'OR') {
+      this.translateLogicalExpression(expr, builder);
+      return;
+    }
+
+    // 处理 IN 和 NOT IN 操作符
+    if (operator === 'IN' || operator === 'NOT IN') {
+      if (this.isColumnReference(left)) {
+        const field = this.extractFieldName(left);
+        const values = this.extractArrayFromExprList(right);
+        if (values && values.length > 0) {
+          const mappedOperator = this.mapOperator(operator);
+          if (mappedOperator) {
+            builder.where(field, mappedOperator as any, values);
+          }
+        }
+      }
+      return;
+    }
+
+    // 处理 BETWEEN 操作符
+    if (operator === 'BETWEEN') {
+      this.translateBetween(expr, builder);
+      return;
+    }
+
+    // 处理 IS NULL 和 IS NOT NULL
+    if (operator === 'IS' || operator === 'IS NOT') {
+      this.translateIsNull(expr, builder);
+      return;
+    }
+
     // 处理普通比较操作
-    if (this.isColumnReference(left) && this.isLiteral(right)) {
-      let field = (left as ColumnReference).column;
-      // 处理嵌套的 column 对象
-      if (typeof field !== 'string' && field) {
-        if (field.expr && field.expr.value) {
-          field = field.expr.value;
-        } else if (field.value) {
-          field = field.value;
-        }
-      }
-      const value = (right as LiteralValue).value;
-
-      // 映射操作符
-      const mappedOperator = this.mapOperator(operator);
-      if (mappedOperator) {
-        builder.where(field, mappedOperator as any, value);
-      }
-    } else if (this.isLiteral(left) && this.isColumnReference(right)) {
-      let field = (right as ColumnReference).column;
-      // 处理嵌套的 column 对象
-      if (typeof field !== 'string' && field) {
-        if (field.expr && field.expr.value) {
-          field = field.expr.value;
-        } else if (field.value) {
-          field = field.value;
-        }
-      }
-      const value = (left as LiteralValue).value;
-
-      // 反向操作符
+    // 先检查是否是字面量，避免将字符串字面量误识别为列引用
+    if (this.isLiteral(left) && this.isColumnReference(right)) {
+      // 反向比较：value = column
+      const field = this.extractFieldName(right);
+      const value = this.extractLiteralValue(left);
       const reversedOperator = this.reverseOperator(operator);
       if (reversedOperator) {
         builder.where(field, reversedOperator as any, value);
       }
+      return;
+    } else if (this.isColumnReference(left) && this.isLiteral(right)) {
+      // 正常比较：column = value
+      const field = this.extractFieldName(left);
+      const value = this.extractLiteralValue(right);
+      const mappedOperator = this.mapOperator(operator);
+      if (mappedOperator) {
+        builder.where(field, mappedOperator as any, value);
+      }
+      return;
     } else if (this.isColumnReference(left) && this.isColumnReference(right)) {
       // 列对列的比较，暂时不支持
       console.warn('列对列的比较暂不支持');
@@ -144,8 +162,10 @@ export class SQLToQueryBuilderTranslator {
     expr: any,
     builder: QueryBuilder
   ): void {
-    if (expr.type === 'binary' && (expr.operator === 'AND' || expr.operator === 'OR')) {
-      // 处理 node-sql-parser 的逻辑表达式
+    const operator = expr.operator;
+
+    if (operator === 'AND' || operator === 'OR') {
+      // 递归处理左侧和右侧
       this.translateWhere(expr.left, builder);
       this.translateWhere(expr.right, builder);
     } else if (expr.type === 'logical') {
@@ -378,15 +398,58 @@ export class SQLToQueryBuilderTranslator {
    * 提取字面量值
    */
   private extractLiteralValue(expr: ASTExpression): any {
-    if (this.isLiteral(expr)) {
+    if (expr.type === 'literal') {
       return (expr as LiteralValue).value;
     }
 
-    if (this.isColumnReference(expr)) {
-      return expr.column;
+    // Handle node-sql-parser's nested column_ref structure for string literals
+    if (expr.type === 'column_ref') {
+      const columnRef = expr as ColumnReference;
+      if (columnRef.column && typeof columnRef.column === 'object') {
+        const column = columnRef.column as any;
+        if (column.expr && typeof column.expr === 'object') {
+          const nestedExpr = column.expr;
+          const type = nestedExpr.type;
+          const value = nestedExpr.value;
+
+          if (type === 'single_quote_string' || type === 'double_quote_string') {
+            return value;
+          }
+          if (type === 'number') {
+            return Number(value);
+          }
+          if (type === 'boolean') {
+            return Boolean(value);
+          }
+          if (type === 'null') {
+            return null;
+          }
+        }
+      }
     }
 
-    return expr;
+    // 处理其他字面量类型
+    const type = (expr as any).type;
+    const value = (expr as any).value;
+
+    if (type === 'single_quote_string' || type === 'double_quote_string') {
+      return value;
+    }
+
+    if (type === 'number') {
+      return Number(value);
+    }
+
+    if (type === 'boolean') {
+      return Boolean(value);
+    }
+
+    if (type === 'null') {
+      return null;
+    }
+
+    // 默认返回原始值
+    return value !== undefined ? value : expr;
   }
 
   /**
@@ -452,7 +515,32 @@ export class SQLToQueryBuilderTranslator {
   }
 
   private isLiteral(expr: ASTExpression): expr is LiteralValue {
-    return expr.type === 'literal';
+    if (expr.type === 'literal') {
+      return true;
+    }
+
+    // Handle node-sql-parser's string literal parsing
+    // String literals are often parsed as column_ref with nested expression
+    if (expr.type === 'column_ref') {
+      const columnRef = expr as ColumnReference;
+      if (columnRef.column && typeof columnRef.column === 'object') {
+        const column = columnRef.column as any;
+        if (column.expr && typeof column.expr === 'object') {
+          const exprType = column.expr.type;
+          // Check if it's a literal type (string, number, boolean)
+          // Note: 'default' type is for column names, not literals!
+          return [
+            'single_quote_string',
+            'double_quote_string',
+            'number',
+            'boolean',
+            'null'
+          ].includes(exprType);
+        }
+      }
+    }
+
+    return false;
   }
 
   private isGeometry(value: any): value is Geometry {
@@ -464,6 +552,101 @@ export class SQLToQueryBuilderTranslator {
 
   private isSpatialFunctionCall(left: ASTExpression, right: ASTExpression): boolean {
     return false; // 简化版本，实际需要更复杂的判断
+  }
+
+  /**
+   * 从列引用中提取字段名
+   */
+  private extractFieldName(expr: ASTExpression): string {
+    if (!this.isColumnReference(expr)) {
+      return String(expr);
+    }
+
+    let field: string = (expr as ColumnReference).column;
+
+    // 处理嵌套的 column 对象
+    if (typeof field !== 'string' && (field as any)) {
+      if ((field as any).expr && (field as any).expr.value) {
+        field = (field as any).expr.value;
+      } else if ((field as any).value) {
+        field = (field as any).value;
+      } else if ((field as any).column) {
+        field = (field as any).column;
+      }
+    }
+
+    return field;
+  }
+
+  /**
+   * 从表达式中提取数组值（用于 IN 操作符）
+   */
+  private extractArrayFromExprList(expr: ASTExpression): any[] | undefined {
+    // 检查 node-sql-parser 的 expr_list 结构
+    if ((expr as any).type === 'expr_list') {
+      const list = (expr as any).value;
+      if (Array.isArray(list)) {
+        return list.map((item: any) => this.extractLiteralValue(item));
+      }
+    }
+
+    // 检查是否直接是数组
+    if (Array.isArray(expr)) {
+      return expr.map((item: any) => this.extractLiteralValue(item));
+    }
+
+    // 检查是否是包含数组的字面量
+    if (this.isLiteral(expr) && Array.isArray(expr.value)) {
+      return expr.value;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 从表达式中提取数组值（用于 IN 操作符）- 已废弃，使用 extractArrayFromExprList
+   * @deprecated
+   */
+  private extractArrayValue(expr: ASTExpression): any[] | undefined {
+    return this.extractArrayFromExprList(expr);
+  }
+
+  /**
+   * 转换 BETWEEN 操作符
+   */
+  private translateBetween(expr: BinaryExpression, builder: QueryBuilder): void {
+    const { left, right } = expr;
+    const field = this.extractFieldName(left);
+
+    // BETWEEN 的右侧应该是一个包含两个值的数组
+    if ((right as any).type === 'expr_list' && Array.isArray((right as any).value)) {
+      const values = (right as any).value;
+      if (values.length >= 2) {
+        const minValue = this.extractLiteralValue(values[0]);
+        const maxValue = this.extractLiteralValue(values[1]);
+
+        // BETWEEN 等价于 field >= min AND field <= max
+        builder.where(field, '>=', minValue);
+        builder.where(field, '<=', maxValue);
+      }
+    }
+  }
+
+  /**
+   * 转换 IS NULL 和 IS NOT NULL 操作符
+   */
+  private translateIsNull(expr: BinaryExpression, builder: QueryBuilder): void {
+    const { operator, left, right } = expr;
+    const field = this.extractFieldName(left);
+
+    // 检查右侧是否是 NULL
+    if (this.isLiteral(right) && (right as LiteralValue).value === null) {
+      if (operator === 'IS') {
+        builder.where(field, '=', null);
+      } else if (operator === 'IS NOT') {
+        builder.where(field, '!=', null);
+      }
+    }
   }
 }
 

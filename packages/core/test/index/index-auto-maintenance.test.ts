@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { WebGeoDB } from '../../src';
 
 describe('Spatial Index Auto-Maintenance', () => {
@@ -108,8 +108,10 @@ describe('Spatial Index Auto-Maintenance', () => {
       await db.features.insertMany(batch2);
 
       // 验证所有数据都可以通过空间查询找到
+      // 注意：使用足够大的距离以包含所有测试点
+      // [1,1] 到 [3,3] 的距离约为 315km
       const results = await db.features
-        .distance('geometry', [1, 1], '<', 5000)
+        .distance('geometry', [1, 1], '<', 350000)
         .toArray();
 
       expect(results.length).toBe(4);
@@ -169,8 +171,10 @@ describe('Spatial Index Auto-Maintenance', () => {
       await db.features.delete('2');
 
       // 验证剩余数据可以通过空间查询找到
+      // 注意：使用足够大的距离以包含剩余的点
+      // [1,1] 到 [0,0] 和 [2,2] 的距离约为 157km
       const results = await db.features
-        .distance('geometry', [1, 1], '<', 2000)
+        .distance('geometry', [1, 1], '<', 200000)
         .toArray();
 
       expect(results.length).toBe(2);
@@ -200,8 +204,11 @@ describe('Spatial Index Auto-Maintenance', () => {
 
       // 验证查询性能
       const startTime = performance.now();
+      // 注意：在[0,100]x[0,100]的区域内随机生成1000个点
+      // 从中心[50,50]查询，需要足够大的距离以确保找到一些点
+      // 使用1000km距离约等于9度，覆盖范围更大
       const results = await db.features
-        .distance('geometry', [50, 50], '<', 10)
+        .distance('geometry', [50, 50], '<', 1000000)
         .toArray();
       const endTime = performance.now();
 

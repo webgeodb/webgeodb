@@ -20,6 +20,8 @@ import { Parser } from './sql-parser';
 import { SQLToQueryBuilderTranslator } from './query-translator';
 import { SQLQueryCache, getGlobalCache } from './cache';
 import { PostGISFunctionRegistry, parsePostGISFunction } from './postgis-functions';
+import { AggregateFunctionProcessor } from './aggregate-functions';
+import { ErrorFactory, SQLError, DatabaseError, StorageError, ErrorCode } from '../errors';
 
 /**
  * SQL 执行选项
@@ -186,7 +188,11 @@ export class SQLExecutor {
           );
 
         default:
-          throw new Error(`不支持的语句类型: ${(statement as any).type}`);
+          throw new SQLError(
+            'SQL_NOT_SUPPORTED' as any,
+            `不支持的语句类型: ${(statement as any).type}`,
+            { query: sql }
+          );
       }
     };
 
@@ -220,46 +226,64 @@ export class SQLExecutor {
   ): Promise<any[]> {
     // 检查数据库是否已关闭
     if (!storage.isOpen) {
-      console.warn('Database is closed, returning empty results');
-      return [];
+      throw ErrorFactory.databaseError(ErrorCode.DATABASE_CLOSED, 'Database is closed, cannot execute SELECT query');
     }
 
-    // 创建 QueryBuilder
-    const QueryBuilderClass = (await import('../query/query-builder')).QueryBuilder;
-    const builder = new QueryBuilderClass(
-      statement.from,
-      storage,
-      spatialIndex,
-      spatialEngine
-    );
+    try {
+      // 检查是否包含聚合函数
+      const hasAggregateFunctions = this.hasAggregateFunctions(statement);
 
-    // 使用转换器将 SQL 转换为 QueryBuilder 调用
-    this.translator.translate(statement, builder);
+      // 创建 QueryBuilder
+      const QueryBuilderClass = (await import('../query/query-builder')).QueryBuilder;
+      const builder = new QueryBuilderClass(
+        statement.from,
+        storage,
+        spatialIndex,
+        spatialEngine
+      );
 
-    // 执行查询
-    let results = await builder.toArray();
+      // 使用转换器将 SQL 转换为 QueryBuilder 调用
+      this.translator.translate(statement, builder);
 
-    // 处理列选择
-    if (statement.columns.length > 0 && !this.isWildcardSelect(statement.columns)) {
-      results = this.projectColumns(results, statement.columns);
+      // 执行查询
+      let results = await builder.toArray();
+
+      // 处理列选择
+      // 如果包含聚合函数，使用聚合处理器
+      if (hasAggregateFunctions) {
+        results = this.processAggregateFunctions(results, statement);
+      } else {
+        // 处理列选择
+        if (statement.columns.length > 0 && !this.isWildcardSelect(statement.columns)) {
+          results = this.projectColumns(results, statement.columns);
+        }
+      }
+      // 处理 DISTINCT
+      if (statement.distinct) {
+        results = this.distinct(results);
+      }
+
+      // 处理 GROUP BY
+      if (statement.groupBy && statement.groupBy.length > 0) {
+        results = this.groupBy(results, statement.groupBy);
+      }
+
+      // 处理 HAVING
+      if (statement.having) {
+        results = this.applyHaving(results, statement.having);
+      }
+
+      return results;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw ErrorFactory.queryError(
+          `Failed to execute SELECT query on table '${statement.from}': ${error.message}`,
+          { table: statement.from, statement },
+          error
+        );
+      }
+      throw error;
     }
-
-    // 处理 DISTINCT
-    if (statement.distinct) {
-      results = this.distinct(results);
-    }
-
-    // 处理 GROUP BY
-    if (statement.groupBy && statement.groupBy.length > 0) {
-      results = this.groupBy(results, statement.groupBy);
-    }
-
-    // 处理 HAVING
-    if (statement.having) {
-      results = this.applyHaving(results, statement.having);
-    }
-
-    return results;
   }
 
   /**
@@ -272,29 +296,38 @@ export class SQLExecutor {
   ): Promise<any[]> {
     // 检查数据库是否已关闭
     if (!storage.isOpen) {
-      console.warn('Database is closed, cannot execute INSERT');
-      return [];
+      throw ErrorFactory.databaseError(ErrorCode.DATABASE_CLOSED, 'Database is closed, cannot execute INSERT query');
     }
 
-    const table = storage.getTable(statement.table);
-    const results: string[] = [];
+    try {
+      const table = storage.getTable(statement.table);
+      const results: string[] = [];
 
-    for (const row of statement.values) {
-      const data: any = {};
+      for (const row of statement.values) {
+        const data: any = {};
 
-      if (statement.columns) {
-        statement.columns.forEach((col, index) => {
-          data[col] = row[index];
-        });
-      } else {
-        Object.assign(data, row);
+        if (statement.columns) {
+          statement.columns.forEach((col, index) => {
+            data[col] = row[index];
+          });
+        } else {
+          Object.assign(data, row);
+        }
+
+        const id = await table.add(data);
+        results.push(id);
       }
 
-      const id = await table.add(data);
-      results.push(id);
+      return results;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw ErrorFactory.storageError(
+          `Failed to execute INSERT query on table '${statement.table}': ${error.message}`,
+          error
+        );
+      }
+      throw error;
     }
-
-    return results;
   }
 
   /**
@@ -307,25 +340,34 @@ export class SQLExecutor {
   ): Promise<any[]> {
     // 检查数据库是否已关闭
     if (!storage.isOpen) {
-      console.warn('Database is closed, cannot execute UPDATE');
-      return [];
+      throw ErrorFactory.databaseError(ErrorCode.DATABASE_CLOSED, 'Database is closed, cannot execute UPDATE query');
     }
 
-    const table = storage.getTable(statement.table);
+    try {
+      const table = storage.getTable(statement.table);
 
-    // 如果没有 WHERE 子句，更新所有行
-    if (!statement.where) {
+      // 如果没有 WHERE 子句，更新所有行
+      if (!statement.where) {
+        const allItems = await table.toArray();
+        await Promise.all(allItems.map(item => table.update(item.id, statement.set)));
+        return allItems;
+      }
+
+      // TODO: 实现 WHERE 子句的过滤
+      // 目前简化为全表更新
       const allItems = await table.toArray();
       await Promise.all(allItems.map(item => table.update(item.id, statement.set)));
+
       return allItems;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw ErrorFactory.storageError(
+          `Failed to execute UPDATE query on table '${statement.table}': ${error.message}`,
+          error
+        );
+      }
+      throw error;
     }
-
-    // TODO: 实现 WHERE 子句的过滤
-    // 目前简化为全表更新
-    const allItems = await table.toArray();
-    await Promise.all(allItems.map(item => table.update(item.id, statement.set)));
-
-    return allItems;
   }
 
   /**
@@ -338,25 +380,34 @@ export class SQLExecutor {
   ): Promise<any[]> {
     // 检查数据库是否已关闭
     if (!storage.isOpen) {
-      console.warn('Database is closed, cannot execute DELETE');
-      return [];
+      throw ErrorFactory.databaseError(ErrorCode.DATABASE_CLOSED, 'Database is closed, cannot execute DELETE query');
     }
 
-    const table = storage.getTable(statement.table);
+    try {
+      const table = storage.getTable(statement.table);
 
-    // 如果没有 WHERE 子句，删除所有行
-    if (!statement.where) {
+      // 如果没有 WHERE 子句，删除所有行
+      if (!statement.where) {
+        const allItems = await table.toArray();
+        await table.clear();
+        return allItems;
+      }
+
+      // TODO: 实现 WHERE 子句的过滤
+      // 目前简化为全表删除
       const allItems = await table.toArray();
       await table.clear();
+
       return allItems;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw ErrorFactory.storageError(
+          `Failed to execute DELETE query on table '${statement.table}': ${error.message}`,
+          error
+        );
+      }
+      throw error;
     }
-
-    // TODO: 实现 WHERE 子句的过滤
-    // 目前简化为全表删除
-    const allItems = await table.toArray();
-    await table.clear();
-
-    return allItems;
   }
 
   /**
@@ -442,46 +493,70 @@ export class SQLExecutor {
    * 应用参数化查询参数
    */
   private static applyParameters(parseResult: SQLParseResult, params: any[]): void {
-    let paramIndex = 0;
+    try {
+      let paramIndex = 0;
 
-    const replaceParameter = (node: any): any => {
-      if (!node || typeof node !== 'object') {
-        return node;
-      }
-
-      if (node.type === 'param') {
-        if (paramIndex >= params.length) {
-          throw new Error(`参数不足: 需要 ${paramIndex + 1} 个，提供 ${params.length} 个`);
+      const replaceParameter = (node: any): any => {
+        if (!node || typeof node !== 'object') {
+          return node;
         }
 
-        return {
-          type: 'literal',
-          value: params[paramIndex++]
-        };
+        if (node.type === 'param') {
+          if (paramIndex >= params.length) {
+            throw ErrorFactory.queryError(
+              `Insufficient parameters: need ${paramIndex + 1}, provided ${params.length}`,
+              { params, paramIndex }
+            );
+          }
+
+          return {
+            type: 'literal',
+            value: params[paramIndex++]
+          };
+        }
+
+        // 递归处理子节点
+        if (node.left) {
+          node.left = replaceParameter(node.left);
+        }
+
+        if (node.right) {
+          node.right = replaceParameter(node.right);
+        }
+
+        if (node.arguments) {
+          node.arguments = node.arguments.map(replaceParameter);
+        }
+
+        if (node.operands) {
+          node.operands = node.operands.map(replaceParameter);
+        }
+
+        // 处理 SELECT 语句的 WHERE 子句
+        if (node.where) {
+          node.where = replaceParameter(node.where);
+        }
+
+        // 处理其他可能的子节点
+        if (node.columns) {
+          node.columns = node.columns.map(replaceParameter);
+        }
+
+        return node;
+      };
+
+      // 替换 AST 中的参数
+      parseResult.statement = replaceParameter(parseResult.statement) as SQLStatement;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw ErrorFactory.queryError(
+          `Failed to apply parameters to SQL query: ${error.message}`,
+          { params },
+          error
+        );
       }
-
-      // 递归处理子节点
-      if (node.left) {
-        node.left = replaceParameter(node.left);
-      }
-
-      if (node.right) {
-        node.right = replaceParameter(node.right);
-      }
-
-      if (node.arguments) {
-        node.arguments = node.arguments.map(replaceParameter);
-      }
-
-      if (node.operands) {
-        node.operands = node.operands.map(replaceParameter);
-      }
-
-      return node;
-    };
-
-    // 替换 AST 中的参数
-    parseResult.statement = replaceParameter(parseResult.statement) as SQLStatement;
+      throw error;
+    }
   }
 
   /**
@@ -575,5 +650,89 @@ export class SQLExecutor {
    */
   static getCacheStats() {
     return this.cache.getStats();
+  }
+
+  /**
+   * 检查是否包含聚合函数
+   */
+  private static hasAggregateFunctions(statement: SQLSelectStatement): boolean {
+    return statement.columns.some((col: any) => 
+      AggregateFunctionProcessor.isAggregateFunction(col)
+    );
+  }
+
+  /**
+   * 处理聚合函数
+   */
+  private static processAggregateFunctions(results: any[], statement: SQLSelectStatement): any[] {
+    // 如果没有 GROUP BY，返回单行聚合结果
+    if (!statement.groupBy || statement.groupBy.length === 0) {
+      return this.computeAggregates(results, statement.columns);
+    }
+
+    // 如果有 GROUP BY，先分组再聚合
+    return this.groupByAndAggregate(results, statement.groupBy, statement.columns);
+  }
+
+  /**
+   * 计算聚合函数结果
+   */
+  private static computeAggregates(data: any[], columns: any[]): any[] {
+    const result: any = {};
+
+    columns.forEach((col: any) => {
+      const aggFunc = AggregateFunctionProcessor.extractAggregateFunction(col);
+      if (aggFunc) {
+        result[col.alias || aggFunc.type.toLowerCase()] = AggregateFunctionProcessor.executeAggregate(aggFunc, data);
+      } else if (col.type === 'column') {
+        // 如果没有聚合函数，使用第一行的值
+        result[col.alias || col.name] = data.length > 0 ? data[0][col.name] : null;
+      } else if (col.type === 'wildcard') {
+        // 通配符，使用第一行
+        if (data.length > 0) {
+          Object.assign(result, data[0]);
+        }
+      }
+    });
+
+    return [result];
+  }
+
+  /**
+   * 分组并聚合
+   */
+  private static groupByAndAggregate(data: any[], groupBy: string[], columns: any[]): any[] {
+    const groups = new Map<string, any[]>();
+
+    // 分组
+    data.forEach(row => {
+      const key = groupBy.map(col => row[col]).join('|');
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(row);
+    });
+
+    // 对每个组应用聚合函数
+    return Array.from(groups.values()).map(groupData => {
+      const result: any = {};
+
+      // 添加 GROUP BY 列
+      groupBy.forEach(col => {
+        result[col] = groupData[0][col];
+      });
+
+      // 计算聚合函数
+      columns.forEach((col: any) => {
+        const aggFunc = AggregateFunctionProcessor.extractAggregateFunction(col);
+        if (aggFunc) {
+          result[col.alias || aggFunc.type.toLowerCase()] = AggregateFunctionProcessor.executeAggregate(aggFunc, groupData);
+        } else if (col.type === 'column' && groupBy.includes(col.name)) {
+          // GROUP BY 列已经在上面处理了
+        }
+      });
+
+      return result;
+    });
   }
 }

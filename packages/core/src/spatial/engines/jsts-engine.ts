@@ -120,6 +120,9 @@ export class JTSEngine implements SpatialEngine {
       // @ts-ignore - JSTS 是可选依赖
       const jstsModule = await import('jsts');
       this.jsts = jstsModule as any;
+      if (!this.jsts) {
+        throw new Error('JSTS module failed to load');
+      }
       this.reader = new this.jsts.GeoJSONReader();
       this.writer = new this.jsts.GeoJSONWriter();
       this.initialized = true;

@@ -13,6 +13,7 @@ import type {
   ASTExpression,
   ParameterPlaceholder
 } from './ast-nodes';
+import { ErrorFactory, SQLError } from '../errors';
 
 /**
  * SQL 解析器类
@@ -47,7 +48,10 @@ export class Parser {
         parameters
       };
     } catch (error) {
-      throw new Error(`SQL 解析失败: ${(error as Error).message}`);
+      if (error instanceof Error) {
+        throw ErrorFactory.sqlSyntaxError(sql, error.message);
+      }
+      throw error;
     }
   }
 
@@ -56,7 +60,7 @@ export class Parser {
    */
   private convertToStatement(ast: any): SQLStatement {
     if (!ast || typeof ast !== 'object') {
-      throw new Error('无效的 AST');
+      throw ErrorFactory.sqlSyntaxError('', 'Invalid AST structure');
     }
 
     // 处理数组形式的 AST（node-sql-parser 可能返回数组）
@@ -72,7 +76,7 @@ export class Parser {
       case 'delete':
         return this.convertDeleteStatement(stmt);
       default:
-        throw new Error(`不支持的语句类型: ${stmt.type}`);
+        throw ErrorFactory.sqlNotSupported(`Statement type: ${stmt.type}`);
     }
   }
 
@@ -94,6 +98,9 @@ export class Parser {
         // LIMIT x OFFSET y
         limit = this.convertLimit(ast.limit.value[0]);
         offset = this.convertOffset(ast.limit.value[1]);
+      } else if (ast.limit.seperator === 'offset' && Array.isArray(ast.limit.value) && ast.limit.value.length === 1) {
+        // OFFSET y (单独的 OFFSET 被解析为 limit)
+        offset = this.convertOffset(ast.limit.value[0]);
       } else {
         // 只有 LIMIT
         limit = this.convertLimit(ast.limit);
@@ -181,7 +188,13 @@ export class Parser {
     }
 
     return columns.map((col: any) => {
+      // 处理通配符 *
       if (col === '*') {
+        return { type: 'wildcard' };
+      }
+
+      // 处理 { expr: { type: 'column_ref', column: '*' } }
+      if (col?.expr?.type === 'column_ref' && col?.expr?.column === '*') {
         return { type: 'wildcard' };
       }
 
@@ -200,6 +213,16 @@ export class Parser {
           name: col.name,
           alias: col.as,
           expression: this.convertExpression(col)
+        };
+      }
+
+      // 处理聚合函数：{ type: 'expr', expr: { type: 'aggr_func', ... } }
+      if (col.type === 'expr' && col.expr?.type === 'aggr_func') {
+        return {
+          type: 'function',
+          name: col.expr.name,
+          alias: col.as,
+          expression: this.convertExpression(col.expr)
         };
       }
 
@@ -366,6 +389,29 @@ export class Parser {
           type: 'function',
           name: expr.name,
           arguments: expr.args.expr_list ? expr.args.expr_list.map((arg: any) => this.convertExpression(arg)) : []
+        };
+
+      case 'aggr_func':
+        // 聚合函数：COUNT(*), SUM(price), etc.
+        // node-sql-parser 的聚合函数参数结构：
+        // args: { expr: { type: 'column_ref' | 'star', ... } }
+        const aggrArgs = expr.args;
+        let convertedArgs: any[] = [];
+
+        if (aggrArgs) {
+          // 检查是否有 expr 属性
+          if (aggrArgs.expr) {
+            convertedArgs = [this.convertExpression(aggrArgs.expr)];
+          } else if (Array.isArray(aggrArgs)) {
+            // 如果是数组，逐个转换
+            convertedArgs = aggrArgs.map((arg: any) => this.convertExpression(arg));
+          }
+        }
+
+        return {
+          type: 'function',
+          name: expr.name,
+          arguments: convertedArgs
         };
 
       case 'column_ref':

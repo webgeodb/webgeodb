@@ -4,10 +4,10 @@
  * 动态加载空间谓词和引擎插件，支持依赖解析和版本管理
  */
 
-import type { Geometry } from '../../types';
-import type { SpatialEngine } from '../spatial-engine';
-import type { SpatialPredicate } from '../../types/database';
-import type { PredicatePlugin, PredicatePluginMetadata } from '../predicates/predicate-registry';
+import type { Geometry } from '../types';
+import type { SpatialEngine } from '../spatial/spatial-engine';
+import type { SpatialPredicate } from '../types/database';
+import type { PredicatePlugin, PredicatePluginMetadata } from './predicates/predicate-registry';
 
 /**
  * 插件加载状态

@@ -19,6 +19,13 @@ import {
 } from './sql';
 import { EngineRegistry } from './spatial/engine-registry';
 import type { SpatialEngine } from './spatial/spatial-engine';
+import {
+  ErrorFactory,
+  DatabaseError,
+  TableError,
+  IndexError,
+  QueryError
+} from './errors';
 
 /**
  * WebGeoDB 核心类
@@ -27,6 +34,7 @@ export class WebGeoDB {
   private config: DatabaseConfig;
   private storage: IndexedDBStorage;
   private spatialIndices: Map<string, HybridSpatialIndex> = new Map();
+  private spatialIndexFields: Map<string, string> = new Map();
   private schemas: Record<string, TableSchema> = {};
 
   [key: string]: any;
@@ -64,7 +72,14 @@ export class WebGeoDB {
    * 打开数据库
    */
   async open(): Promise<void> {
-    await this.storage.open();
+    try {
+      await this.storage.open();
+    } catch (error) {
+      if (error instanceof Error) {
+        throw ErrorFactory.databaseInitFailed(this.config.name, error);
+      }
+      throw error;
+    }
   }
 
   /**
@@ -80,7 +95,18 @@ export class WebGeoDB {
     }
 
     // 关闭数据库
-    await this.storage.close();
+    try {
+      await this.storage.close();
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new DatabaseError(
+          'DATABASE_CLOSED' as any,
+          `Failed to close database: ${error.message}`,
+          { originalError: error }
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -94,59 +120,76 @@ export class WebGeoDB {
        * 插入数据
        */
       async insert(data: any): Promise<string> {
-        const table = self.storage.getTable(tableName);
+        try {
+          const table = self.storage.getTable(tableName);
 
-        // 如果有几何字段,计算边界框
-        const schema = self.schemas[tableName];
-        for (const [field, type] of Object.entries(schema)) {
-          if (type === 'geometry' && data[field]) {
-            const bbox = getBBox(data[field]);
-            Object.assign(data, bbox);
+          // 如果有几何字段,计算边界框
+          const schema = self.schemas[tableName];
+          for (const [field, type] of Object.entries(schema)) {
+            if (type === 'geometry' && data[field]) {
+              const bbox = getBBox(data[field]);
+              Object.assign(data, bbox);
+            }
           }
+
+          const id = await table.add(data);
+
+          // 更新空间索引
+          const spatialIndex = self.spatialIndices.get(tableName);
+          if (spatialIndex && data.geometry) {
+            const bbox = getBBox(data.geometry);
+            spatialIndex.insert({ id: data.id, ...bbox });
+          }
+
+          return id as string;
+        } catch (error) {
+          if (error instanceof Error) {
+            throw ErrorFactory.storageError(`Failed to insert data into table '${tableName}': ${error.message}`, error);
+          }
+          throw error;
         }
-
-        const id = await table.add(data);
-
-        // 更新空间索引
-        const spatialIndex = self.spatialIndices.get(tableName);
-        if (spatialIndex && data.geometry) {
-          const bbox = getBBox(data.geometry);
-          spatialIndex.insert({ id: data.id, ...bbox });
-        }
-
-        return id as string;
       },
 
       /**
        * 批量插入
        */
       async insertMany(items: any[]): Promise<void> {
-        const table = self.storage.getTable(tableName);
+        try {
+          const table = self.storage.getTable(tableName);
 
-        // 计算边界框
-        const schema = self.schemas[tableName];
-        for (const item of items) {
-          for (const [field, type] of Object.entries(schema)) {
-            if (type === 'geometry' && item[field]) {
-              const bbox = getBBox(item[field]);
-              Object.assign(item, bbox);
+          // 计算边界框
+          const schema = self.schemas[tableName];
+          for (const item of items) {
+            for (const [field, type] of Object.entries(schema)) {
+              if (type === 'geometry' && item[field]) {
+                const bbox = getBBox(item[field]);
+                Object.assign(item, bbox);
+              }
             }
           }
-        }
 
-        await table.bulkAdd(items);
+          await table.bulkAdd(items);
 
-        // 更新空间索引
-        const spatialIndex = self.spatialIndices.get(tableName);
-        if (spatialIndex) {
-          const indexItems: IndexItem[] = items
-            .filter(item => item.geometry)
-            .map(item => {
-              const bbox = getBBox(item.geometry);
-              return { id: item.id, ...bbox };
-            });
+          // 更新空间索引
+          const spatialIndex = self.spatialIndices.get(tableName);
+          if (spatialIndex) {
+            const indexField = self.spatialIndexFields.get(tableName);
+            if (indexField) {
+              const indexItems: IndexItem[] = items
+                .filter(item => item[indexField])
+                .map(item => {
+                  const bbox = getBBox(item[indexField]);
+                  return { id: item.id, ...bbox };
+                });
 
-          spatialIndex.insertMany(indexItems);
+              spatialIndex.insertMany(indexItems);
+            }
+          }
+        } catch (error) {
+          if (error instanceof Error) {
+            throw ErrorFactory.storageError(`Failed to bulk insert into table '${tableName}': ${error.message}`, error);
+          }
+          throw error;
         }
       },
 
@@ -154,40 +197,55 @@ export class WebGeoDB {
        * 获取单条数据
        */
       async get(id: string): Promise<any> {
-        const table = self.storage.getTable(tableName);
-        return table.get(id);
+        try {
+          const table = self.storage.getTable(tableName);
+          return await table.get(id);
+        } catch (error) {
+          if (error instanceof Error) {
+            throw ErrorFactory.storageError(`Failed to get record '${id}' from table '${tableName}': ${error.message}`, error);
+          }
+          throw error;
+        }
       },
 
       /**
        * 更新数据
        */
       async update(id: string, data: any): Promise<void> {
-        const table = self.storage.getTable(tableName);
+        try {
+          const table = self.storage.getTable(tableName);
 
-        // 如果有几何字段,重新计算边界框
-        const schema = self.schemas[tableName];
-        for (const [field, type] of Object.entries(schema)) {
-          if (type === 'geometry' && data[field]) {
-            const bbox = getBBox(data[field]);
-            Object.assign(data, bbox);
-          }
-        }
-
-        await table.update(id, data);
-
-        // 更新空间索引
-        const spatialIndex = self.spatialIndices.get(tableName);
-        if (spatialIndex && data.geometry) {
-          // 删除旧索引
-          const oldItem = await table.get(id);
-          if (oldItem && oldItem.geometry) {
-            const oldBBox = getBBox(oldItem.geometry);
-            spatialIndex.remove({ id, ...oldBBox });
+          // 如果有几何字段,重新计算边界框
+          const schema = self.schemas[tableName];
+          for (const [field, type] of Object.entries(schema)) {
+            if (type === 'geometry' && data[field]) {
+              const bbox = getBBox(data[field]);
+              Object.assign(data, bbox);
+            }
           }
 
-          // 添加新索引
-          const newBBox = getBBox(data.geometry);
-          spatialIndex.insert({ id, ...newBBox });
+          await table.update(id, data);
+
+          // 更新空间索引
+          const spatialIndex = self.spatialIndices.get(tableName);
+          const indexField = self.spatialIndexFields.get(tableName);
+          if (spatialIndex && indexField && data[indexField]) {
+            // 删除旧索引
+            const oldItem = await table.get(id);
+            if (oldItem && oldItem[indexField]) {
+              const oldBBox = getBBox(oldItem[indexField]);
+              spatialIndex.remove({ id, ...oldBBox });
+            }
+
+            // 添加新索引
+            const newBBox = getBBox(data[indexField]);
+            spatialIndex.insert({ id, ...newBBox });
+          }
+        } catch (error) {
+          if (error instanceof Error) {
+            throw ErrorFactory.storageError(`Failed to update record '${id}' in table '${tableName}': ${error.message}`, error);
+          }
+          throw error;
         }
       },
 
@@ -195,57 +253,83 @@ export class WebGeoDB {
        * 删除数据
        */
       async delete(id: string): Promise<void> {
-        const table = self.storage.getTable(tableName);
+        try {
+          const table = self.storage.getTable(tableName);
 
-        // 删除空间索引
-        const spatialIndex = self.spatialIndices.get(tableName);
-        if (spatialIndex) {
-          const item = await table.get(id);
-          if (item && item.geometry) {
-            const bbox = getBBox(item.geometry);
-            spatialIndex.remove({ id, ...bbox });
+          // 删除空间索引
+          const spatialIndex = self.spatialIndices.get(tableName);
+          const indexField = self.spatialIndexFields.get(tableName);
+          if (spatialIndex && indexField) {
+            const item = await table.get(id);
+            if (item && item[indexField]) {
+              const bbox = getBBox(item[indexField]);
+              spatialIndex.remove({ id, ...bbox });
+            }
           }
-        }
 
-        await table.delete(id);
+          await table.delete(id);
+        } catch (error) {
+          if (error instanceof Error) {
+            throw ErrorFactory.storageError(`Failed to delete record '${id}' from table '${tableName}': ${error.message}`, error);
+          }
+          throw error;
+        }
       },
 
       /**
        * 批量删除
        */
       async deleteMany(ids: string[]): Promise<void> {
-        const table = self.storage.getTable(tableName);
+        try {
+          const table = self.storage.getTable(tableName);
 
-        // 删除空间索引
-        const spatialIndex = self.spatialIndices.get(tableName);
-        if (spatialIndex) {
-          for (const id of ids) {
-            const item = await table.get(id);
-            if (item && item.geometry) {
-              const bbox = getBBox(item.geometry);
-              spatialIndex.remove({ id, ...bbox });
+          // 删除空间索引
+          const spatialIndex = self.spatialIndices.get(tableName);
+          const indexField = self.spatialIndexFields.get(tableName);
+          if (spatialIndex && indexField) {
+            for (const id of ids) {
+              const item = await table.get(id);
+              if (item && item[indexField]) {
+                const bbox = getBBox(item[indexField]);
+                spatialIndex.remove({ id, ...bbox });
+              }
             }
           }
-        }
 
-        await table.bulkDelete(ids);
+          await table.bulkDelete(ids);
+        } catch (error) {
+          if (error instanceof Error) {
+            throw ErrorFactory.storageError(`Failed to bulk delete from table '${tableName}': ${error.message}`, error);
+          }
+          throw error;
+        }
       },
 
       /**
        * 创建空间索引
        */
       async createIndex(field: string, config?: IndexConfig): Promise<void> {
-        const schema = self.schemas[tableName];
-        if (schema[field] !== 'geometry') {
-          throw new Error(`Field ${field} is not a geometry field`);
-        }
+        try {
+          const schema = self.schemas[tableName];
+          if (schema[field] !== 'geometry') {
+            throw ErrorFactory.invalidSchema(tableName, `Field '${field}' is not a geometry field`);
+          }
 
-        const spatialIndex = new HybridSpatialIndex();
-        self.spatialIndices.set(tableName, spatialIndex);
+          const spatialIndex = new HybridSpatialIndex();
+          self.spatialIndices.set(tableName, spatialIndex);
 
-        // 如果配置了自动维护,加载现有数据
-        if (config?.auto !== false) {
-          await self.loadSpatialIndex(tableName, field);
+          // 保存索引对应的字段名
+          self.spatialIndexFields.set(tableName, field);
+
+          // 如果配置了自动维护,加载现有数据
+          if (config?.auto !== false) {
+            await self.loadSpatialIndex(tableName, field);
+          }
+        } catch (error) {
+          if (error instanceof Error) {
+            throw ErrorFactory.indexCreateFailed(tableName, field, error);
+          }
+          throw error;
         }
       },
 
@@ -295,29 +379,50 @@ export class WebGeoDB {
        * 获取所有数据
        */
       async toArray(): Promise<any[]> {
-        const table = self.storage.getTable(tableName);
-        return table.toArray();
+        try {
+          const table = self.storage.getTable(tableName);
+          return await table.toArray();
+        } catch (error) {
+          if (error instanceof Error) {
+            throw ErrorFactory.storageError(`Failed to get all records from table '${tableName}': ${error.message}`, error);
+          }
+          throw error;
+        }
       },
 
       /**
        * 获取数量
        */
       async count(): Promise<number> {
-        const table = self.storage.getTable(tableName);
-        return table.count();
+        try {
+          const table = self.storage.getTable(tableName);
+          return await table.count();
+        } catch (error) {
+          if (error instanceof Error) {
+            throw ErrorFactory.storageError(`Failed to count records in table '${tableName}': ${error.message}`, error);
+          }
+          throw error;
+        }
       },
 
       /**
        * 清空表
        */
       async clear(): Promise<void> {
-        const table = self.storage.getTable(tableName);
-        await table.clear();
+        try {
+          const table = self.storage.getTable(tableName);
+          await table.clear();
 
-        // 清空空间索引
-        const spatialIndex = self.spatialIndices.get(tableName);
-        if (spatialIndex) {
-          spatialIndex.clear();
+          // 清空空间索引
+          const spatialIndex = self.spatialIndices.get(tableName);
+          if (spatialIndex) {
+            spatialIndex.clear();
+          }
+        } catch (error) {
+          if (error instanceof Error) {
+            throw ErrorFactory.storageError(`Failed to clear table '${tableName}': ${error.message}`, error);
+          }
+          throw error;
         }
       },
 
@@ -357,22 +462,33 @@ export class WebGeoDB {
     tableName: string,
     field: string
   ): Promise<void> {
-    const table = this.storage.getTable(tableName);
-    const items = await table.toArray();
+    try {
+      const table = this.storage.getTable(tableName);
+      const items = await table.toArray();
 
-    const spatialIndex = this.spatialIndices.get(tableName);
-    if (!spatialIndex) {
-      return;
+      const spatialIndex = this.spatialIndices.get(tableName);
+      if (!spatialIndex) {
+        return;
+      }
+
+      const indexItems: IndexItem[] = items
+        .filter(item => item[field])
+        .map(item => {
+          const bbox = getBBox(item[field]);
+          return { id: item.id, ...bbox };
+        });
+
+      spatialIndex.insertMany(indexItems);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw ErrorFactory.indexCreateFailed(
+          tableName,
+          field,
+          error
+        );
+      }
+      throw error;
     }
-
-    const indexItems: IndexItem[] = items
-      .filter(item => item[field])
-      .map(item => {
-        const bbox = getBBox(item[field]);
-        return { id: item.id, ...bbox };
-      });
-
-    spatialIndex.insertMany(indexItems);
   }
 
   /**
@@ -384,7 +500,7 @@ export class WebGeoDB {
    * @example
    * ```typescript
    * // 简单查询
-   * const results = await db.query('SELECT * FROM features WHERE type = ?', ['poi']);
+   * const results = await db.query('SELECT * FROM features WHERE type = $1', ['restaurant']);
    *
    * // 空间查询
    * const nearby = await db.query(`
@@ -393,23 +509,43 @@ export class WebGeoDB {
    * `);
    *
    * // 使用参数化查询
-   * const stmt = db.prepare('SELECT * FROM features WHERE type = ? AND rating >= ?');
+   * const stmt = db.prepare('SELECT * FROM features WHERE type = $1 AND rating >= $2');
    * const pois = await stmt.execute(['restaurant', 4.0]);
    * ```
    */
-  async query(sql: string, options?: SQLExecuteOptions): Promise<any[]> {
-    // 获取默认空间引擎
-    const spatialEngine = EngineRegistry.getDefaultEngine();
+  async query(sql: string, options?: SQLExecuteOptions | any[]): Promise<any[]> {
+    try {
+      // 获取默认空间引擎
+      const spatialEngine = EngineRegistry.getDefaultEngine();
 
-    const result = await SQLExecutor.execute(
-      sql,
-      this.storage,
-      null, // 不使用空间索引（在查询构建器中处理）
-      spatialEngine,
-      options || {}
-    );
+      // 支持两种调用方式：
+      // 1. db.query(sql, { params: [...] })
+      // 2. db.query(sql, [...])
+      let executeOptions: SQLExecuteOptions;
+      if (Array.isArray(options)) {
+        executeOptions = { params: options };
+      } else {
+        executeOptions = options || {};
+      }
 
-    return result.data;
+      const result = await SQLExecutor.execute(
+        sql,
+        this.storage,
+        null, // 不使用空间索引（在查询构建器中处理）
+        spatialEngine,
+        executeOptions
+      );
+
+      return result.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw ErrorFactory.queryError(
+          `SQL query failed: ${error.message}`,
+          { sql, options }
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -428,14 +564,24 @@ export class WebGeoDB {
    * ```
    */
   prepare(sql: string): PreparedSQLStatement {
-    const spatialEngine = EngineRegistry.getDefaultEngine();
+    try {
+      const spatialEngine = EngineRegistry.getDefaultEngine();
 
-    return SQLExecutor.prepare(
-      sql,
-      this.storage,
-      null, // 不使用空间索引（在查询构建器中处理）
-      spatialEngine
-    );
+      return SQLExecutor.prepare(
+        sql,
+        this.storage,
+        null, // 不使用空间索引（在查询构建器中处理）
+        spatialEngine
+      );
+    } catch (error) {
+      if (error instanceof Error) {
+        throw ErrorFactory.queryError(
+          `Failed to prepare SQL statement: ${error.message}`,
+          { sql }
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -452,10 +598,20 @@ export class WebGeoDB {
    * ```
    */
   explain(sql: string): QueryPlan {
-    const parser = new Parser();
-    const parseResult = parser.parse(sql);
+    try {
+      const parser = new Parser();
+      const parseResult = parser.parse(sql);
 
-    return SQLExecutor.explain(parseResult);
+      return SQLExecutor.explain(parseResult);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw ErrorFactory.queryError(
+          `Failed to explain SQL query: ${error.message}`,
+          { sql }
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -489,5 +645,117 @@ export class WebGeoDB {
    */
   getQueryCacheStats() {
     return SQLExecutor.getCacheStats();
+  }
+
+  /**
+   * 获取性能统计信息
+   * @returns 性能统计数据
+   *
+   * @example
+   * ```typescript
+   * const stats = db.getStats();
+   * console.log('总查询次数:', stats.queryCount);
+   * console.log('平均查询时间:', stats.avgQueryTime, 'ms');
+   * console.log('索引命中率:', (stats.indexHitRate * 100).toFixed(1), '%');
+   * console.log('缓存命中率:', (stats.cacheHitRate * 100).toFixed(1), '%');
+   * console.log('内存使用:', (stats.memoryUsage / 1024 / 1024).toFixed(2), 'MB');
+   * ```
+   */
+  async getStats() {
+    const { getGlobalPerformanceMonitor } = await import('./monitoring');
+    const monitor = getGlobalPerformanceMonitor();
+    return monitor.getStats();
+  }
+
+  /**
+   * 启用或禁用性能分析
+   * @param enabled 是否启用性能分析
+   *
+   * @example
+   * ```typescript
+   * // 启用性能分析
+   * db.enableProfiling(true);
+   *
+   * // 禁用性能分析
+   * db.enableProfiling(false);
+   * ```
+   */
+  async enableProfiling(enabled: boolean): Promise<void> {
+    const { getGlobalPerformanceMonitor } = await import('./monitoring');
+    const monitor = getGlobalPerformanceMonitor();
+    monitor.enableProfiling(enabled);
+  }
+
+  /**
+   * 获取慢查询日志
+   * @param threshold 慢查询阈值（毫秒），可选，默认使用当前设置的阈值
+   * @returns 慢查询列表
+   *
+   * @example
+   * ```typescript
+   * // 获取所有慢查询（使用默认阈值）
+   * const slowQueries = await db.getSlowQueries();
+   *
+   * // 获取超过 200ms 的查询
+   * const verySlowQueries = await db.getSlowQueries(200);
+   *
+   * // 分析慢查询
+   * slowQueries.forEach(q => {
+   *   console.log(`${q.type}: ${q.query} - ${q.duration}ms`);
+   * });
+   * ```
+   */
+  async getSlowQueries(threshold?: number) {
+    const { getGlobalPerformanceMonitor } = await import('./monitoring');
+    const monitor = getGlobalPerformanceMonitor();
+    return monitor.getSlowQueries(threshold);
+  }
+
+  /**
+   * 重置性能统计信息
+   *
+   * @example
+   * ```typescript
+   * // 重置统计
+   * await db.resetStats();
+   * ```
+   */
+  async resetStats(): Promise<void> {
+    const { getGlobalPerformanceMonitor } = await import('./monitoring');
+    const monitor = getGlobalPerformanceMonitor();
+    monitor.resetStats();
+  }
+
+  /**
+   * 设置慢查询阈值
+   * @param threshold 慢查询阈值（毫秒）
+   *
+   * @example
+   * ```typescript
+   * // 将慢查询阈值设置为 50ms
+   * await db.setSlowQueryThreshold(50);
+   * ```
+   */
+  async setSlowQueryThreshold(threshold: number): Promise<void> {
+    const { getGlobalPerformanceMonitor } = await import('./monitoring');
+    const monitor = getGlobalPerformanceMonitor();
+    monitor.setSlowQueryThreshold(threshold);
+  }
+
+  /**
+   * 获取性能报告
+   * @returns 格式化的性能报告字符串
+   *
+   * @example
+   * ```typescript
+   * // 打印性能报告
+   * const report = await db.getPerformanceReport();
+   * console.log(report);
+   * ```
+   */
+  async getPerformanceReport(): Promise<string> {
+    const { getGlobalPerformanceMonitor } = await import('./monitoring');
+    const monitor = getGlobalPerformanceMonitor();
+    return monitor.getReport();
   }
 }

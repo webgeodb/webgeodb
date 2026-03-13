@@ -2,6 +2,7 @@ import type { BBox, IndexItem } from '../types';
 import type { SpatialIndex } from './spatial-index';
 import { RTreeIndex } from './rtree-index';
 import { FlatbushIndex } from './flatbush-index';
+import { ErrorFactory } from '../errors';
 
 /**
  * 混合空间索引
@@ -17,41 +18,146 @@ export class HybridSpatialIndex implements SpatialIndex {
   }
 
   insert(item: IndexItem): void {
-    this.dynamicIndex.insert(item);
+    try {
+      this.dynamicIndex.insert(item);
+    } catch (error) {
+      if (error instanceof Error && 'code' in error) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw ErrorFactory.indexError(
+          'HYBRID_INDEX_INSERT_FAILED',
+          `Failed to insert item into hybrid index: ${error.message}`,
+          { item },
+          error
+        );
+      }
+      throw error;
+    }
   }
 
   insertMany(items: IndexItem[]): void {
-    this.dynamicIndex.insertMany(items);
+    try {
+      this.dynamicIndex.insertMany(items);
+    } catch (error) {
+      if (error instanceof Error && 'code' in error) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw ErrorFactory.indexError(
+          'HYBRID_INDEX_BATCH_INSERT_FAILED',
+          `Failed to batch insert items into hybrid index: ${error.message}`,
+          { itemCount: items.length },
+          error
+        );
+      }
+      throw error;
+    }
   }
 
   remove(item: IndexItem): void {
-    this.dynamicIndex.remove(item);
+    try {
+      this.dynamicIndex.remove(item);
+    } catch (error) {
+      if (error instanceof Error && 'code' in error) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw ErrorFactory.indexError(
+          'HYBRID_INDEX_REMOVE_FAILED',
+          `Failed to remove item from hybrid index: ${error.message}`,
+          { item },
+          error
+        );
+      }
+      throw error;
+    }
   }
 
   search(bbox: BBox): IndexItem[] {
-    const dynamicResults = this.dynamicIndex.search(bbox);
-    const staticResults = this.staticIndex ? this.staticIndex.search(bbox) : [];
-    return [...dynamicResults, ...staticResults];
+    try {
+      const dynamicResults = this.dynamicIndex.search(bbox);
+      const staticResults = this.staticIndex ? this.staticIndex.search(bbox) : [];
+      return [...dynamicResults, ...staticResults];
+    } catch (error) {
+      if (error instanceof Error && 'code' in error) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw ErrorFactory.indexError(
+          'HYBRID_INDEX_SEARCH_FAILED',
+          `Failed to search hybrid index: ${error.message}`,
+          { bbox },
+          error
+        );
+      }
+      throw error;
+    }
   }
 
   clear(): void {
-    this.dynamicIndex.clear();
-    if (this.staticIndex) {
-      this.staticIndex.clear();
-      this.staticIndex = null;
+    try {
+      this.dynamicIndex.clear();
+      if (this.staticIndex) {
+        this.staticIndex.clear();
+        this.staticIndex = null;
+      }
+    } catch (error) {
+      if (error instanceof Error && 'code' in error) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw ErrorFactory.indexError(
+          'HYBRID_INDEX_CLEAR_FAILED',
+          `Failed to clear hybrid index: ${error.message}`,
+          {},
+          error
+        );
+      }
+      throw error;
     }
   }
 
   all(): IndexItem[] {
-    const dynamicItems = this.dynamicIndex.all();
-    const staticItems = this.staticIndex ? this.staticIndex.all() : [];
-    return [...dynamicItems, ...staticItems];
+    try {
+      const dynamicItems = this.dynamicIndex.all();
+      const staticItems = this.staticIndex ? this.staticIndex.all() : [];
+      return [...dynamicItems, ...staticItems];
+    } catch (error) {
+      if (error instanceof Error && 'code' in error) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw ErrorFactory.indexError(
+          'HYBRID_INDEX_GET_ALL_FAILED',
+          `Failed to get all items from hybrid index: ${error.message}`,
+          {},
+          error
+        );
+      }
+      throw error;
+    }
   }
 
   size(): number {
-    const dynamicSize = this.dynamicIndex.size();
-    const staticSize = this.staticIndex ? this.staticIndex.size() : 0;
-    return dynamicSize + staticSize;
+    try {
+      const dynamicSize = this.dynamicIndex.size();
+      const staticSize = this.staticIndex ? this.staticIndex.size() : 0;
+      return dynamicSize + staticSize;
+    } catch (error) {
+      if (error instanceof Error && 'code' in error) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw ErrorFactory.indexError(
+          'HYBRID_INDEX_SIZE_FAILED',
+          `Failed to get hybrid index size: ${error.message}`,
+          {},
+          error
+        );
+      }
+      throw error;
+    }
   }
 
   isBuilt(): boolean {
@@ -64,31 +170,61 @@ export class HybridSpatialIndex implements SpatialIndex {
    * 适用于数据加载完成后,提升查询性能
    */
   freeze(): void {
-    const items = this.dynamicIndex.all();
-    if (items.length === 0) {
-      return;
+    try {
+      const items = this.dynamicIndex.all();
+      if (items.length === 0) {
+        return;
+      }
+
+      this.staticIndex = new FlatbushIndex();
+      this.staticIndex.insertMany(items);
+      this.staticIndex.build();
+
+      // 清空动态索引
+      this.dynamicIndex.clear();
+    } catch (error) {
+      if (error instanceof Error && 'code' in error) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw ErrorFactory.indexError(
+          'HYBRID_INDEX_FREEZE_FAILED',
+          `Failed to freeze hybrid index: ${error.message}`,
+          {},
+          error
+        );
+      }
+      throw error;
     }
-
-    this.staticIndex = new FlatbushIndex();
-    this.staticIndex.insertMany(items);
-    this.staticIndex.build();
-
-    // 清空动态索引
-    this.dynamicIndex.clear();
   }
 
   /**
    * 解冻,恢复为动态索引
    */
   unfreeze(): void {
-    if (!this.staticIndex) {
-      return;
+    try {
+      if (!this.staticIndex) {
+        return;
+      }
+
+      const items = this.staticIndex.all();
+      this.dynamicIndex.insertMany(items);
+
+      this.staticIndex.clear();
+      this.staticIndex = null;
+    } catch (error) {
+      if (error instanceof Error && 'code' in error) {
+        throw error;
+      }
+      if (error instanceof Error) {
+        throw ErrorFactory.indexError(
+          'HYBRID_INDEX_UNFREEZE_FAILED',
+          `Failed to unfreeze hybrid index: ${error.message}`,
+          {},
+          error
+        );
+      }
+      throw error;
     }
-
-    const items = this.staticIndex.all();
-    this.dynamicIndex.insertMany(items);
-
-    this.staticIndex.clear();
-    this.staticIndex = null;
   }
 }

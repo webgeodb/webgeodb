@@ -13,6 +13,7 @@ import { getBBox, bboxIntersects, bboxContains, isEmptyGeometry } from '../utils
 import { EngineRegistry } from '../spatial/engine-registry';
 import { globalGeometryCache } from '../spatial/geometry-cache';
 import { MultiConditionOptimizer, optimizeMultiConditions } from './multi-condition-optimizer';
+import { ErrorFactory, DatabaseError, QueryError, ValidationError, ErrorCode } from '../errors';
 
 /**
  * 查询构建器
@@ -45,6 +46,12 @@ export class QueryBuilder<T = any> {
    * 设置空间引擎
    */
   withEngine(engine: SpatialEngine): this {
+    if (!engine) {
+      throw ErrorFactory.validationError(
+        ErrorCode.SPATIAL_ENGINE_REQUIRED,
+        'Spatial engine cannot be null or undefined'
+      );
+    }
     this.spatialEngine = engine;
     return this;
   }
@@ -53,8 +60,26 @@ export class QueryBuilder<T = any> {
    * 设置空间引擎（通过名称）
    */
   useEngine(engineName: string): this {
-    this.spatialEngine = EngineRegistry.getEngine(engineName);
-    return this;
+    try {
+      const engine = EngineRegistry.getEngine(engineName);
+      if (!engine) {
+        throw ErrorFactory.validationError(
+          ErrorCode.SPATIAL_ENGINE_NOT_FOUND,
+          `Spatial engine '${engineName}' not found in registry`
+        );
+      }
+      this.spatialEngine = engine;
+      return this;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw ErrorFactory.validationError(
+          ErrorCode.SPATIAL_ENGINE_ERROR,
+          `Failed to set spatial engine '${engineName}': ${error.message}`,
+          { engineName, originalError: error }
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -116,12 +141,12 @@ export class QueryBuilder<T = any> {
       coordinates: point
     };
 
-    // 根据距离和操作符选择策略
-    const useApproximate = operator === '<' || operator === '<=';
+    // Turf.js 不支持 'meters' 单位，需要转换为 'kilometers'
+    const distanceInKm = distance / 1000;
     const buffered = this.spatialEngine.buffer(
       pointGeometry,
-      distance,
-      'meters'
+      distanceInKm,
+      'kilometers'
     );
 
     if (operator === '<' || operator === '<=') {
@@ -168,42 +193,64 @@ export class QueryBuilder<T = any> {
   async toArray(): Promise<T[]> {
     // 检查数据库是否已关闭
     if (!this.storage.isOpen) {
-      console.warn('Database is closed, returning empty results');
-      return [];
+      throw ErrorFactory.databaseError(
+        ErrorCode.DATABASE_CLOSED,
+        'Database is closed, cannot execute query'
+      );
     }
 
-    let results: T[] = [];
+    try {
+      let results: T[] = [];
 
-    // 1. 空间查询 (使用空间索引)
-    if (this.spatialConditions.length > 0 && this.spatialIndex) {
-      results = await this.executeSpatialQuery();
-    } else {
-      // 2. 属性查询
-      results = await this.executeAttributeQuery();
+      // 1. 空间查询 (使用空间索引)
+      if (this.spatialConditions.length > 0 && this.spatialIndex) {
+        results = await this.executeSpatialQuery();
+      } else {
+        // 2. 属性查询
+        results = await this.executeAttributeQuery();
+      }
+
+      // 3. 应用属性过滤
+      results = this.applyAttributeFilters(results);
+
+      // 4. 应用空间过滤 (精确检查)
+      if (this.spatialConditions.length > 0) {
+        results = this.applySpatialFilters(results);
+      }
+
+      // 5. 排序
+      if (this.orderByConfigs.length > 0) {
+        results = this.applyOrdering(results);
+      }
+
+      // 6. 分页
+      if (this.offsetValue !== undefined) {
+        results = results.slice(this.offsetValue);
+      }
+      if (this.limitValue !== undefined) {
+        results = results.slice(0, this.limitValue);
+      }
+
+      return results;
+    } catch (error) {
+      // 如果是 WebGeoDBError，直接抛出
+      if (error instanceof Error && 'code' in error) {
+        throw error;
+      }
+      // 包装其他错误
+      if (error instanceof Error) {
+        throw ErrorFactory.queryError(
+          `Failed to execute query on table '${this.tableName}': ${error.message}`,
+          {
+            table: this.tableName,
+            conditions: this.conditions,
+            spatialConditions: this.spatialConditions
+          },
+          error
+        );
+      }
+      throw error;
     }
-
-    // 3. 应用属性过滤
-    results = this.applyAttributeFilters(results);
-
-    // 4. 应用空间过滤 (精确检查)
-    if (this.spatialConditions.length > 0) {
-      results = this.applySpatialFilters(results);
-    }
-
-    // 5. 排序
-    if (this.orderByConfigs.length > 0) {
-      results = this.applyOrdering(results);
-    }
-
-    // 6. 分页
-    if (this.offsetValue !== undefined) {
-      results = results.slice(this.offsetValue);
-    }
-    if (this.limitValue !== undefined) {
-      results = results.slice(0, this.limitValue);
-    }
-
-    return results;
   }
 
   /**
@@ -211,13 +258,19 @@ export class QueryBuilder<T = any> {
    */
   private async executeSpatialQuery(): Promise<T[]> {
     if (!this.spatialIndex) {
-      throw new Error('Spatial index not available');
+      throw ErrorFactory.indexError(
+        ErrorCode.INDEX_NOT_AVAILABLE,
+        'Spatial index not available for query',
+        { table: this.tableName }
+      );
     }
 
     // 检查数据库是否已关闭
     if (!this.storage.isOpen) {
-      console.warn('Database is closed during spatial query, returning empty results');
-      return [];
+      throw ErrorFactory.databaseError(
+        ErrorCode.DATABASE_CLOSED,
+        'Database is closed, cannot execute spatial query'
+      );
     }
 
     try {
@@ -250,11 +303,21 @@ export class QueryBuilder<T = any> {
       const results = await table.where('id').anyOf(ids as string[]).toArray();
 
       return results;
-    } catch (error: any) {
-      // 捕获 DatabaseClosedError 并返回空结果
-      if (error.name === 'DatabaseClosedError') {
-        console.warn('Database was closed during spatial query execution, returning empty results');
-        return [];
+    } catch (error) {
+      // 如果是 WebGeoDBError，直接抛出
+      if (error instanceof Error && 'code' in error) {
+        throw error;
+      }
+      // 包装其他错误
+      if (error instanceof Error) {
+        throw ErrorFactory.queryError(
+          `Failed to execute spatial query on table '${this.tableName}': ${error.message}`,
+          {
+            table: this.tableName,
+            spatialConditions: this.spatialConditions
+          },
+          error
+        );
       }
       throw error;
     }
@@ -266,8 +329,10 @@ export class QueryBuilder<T = any> {
   private async executeAttributeQuery(): Promise<T[]> {
     // 检查数据库是否已关闭
     if (!this.storage.isOpen) {
-      console.warn('Database is closed during attribute query, returning empty results');
-      return [];
+      throw ErrorFactory.databaseError(
+        ErrorCode.DATABASE_CLOSED,
+        'Database is closed, cannot execute attribute query'
+      );
     }
 
     try {
@@ -311,13 +376,26 @@ export class QueryBuilder<T = any> {
             return typeof value === 'string' && !value.includes(firstCondition.value);
           });
         default:
-          throw new Error(`Unsupported operator: ${firstCondition.operator}`);
+          throw ErrorFactory.queryError(
+            `Unsupported query operator: ${firstCondition.operator}`,
+            { operator: firstCondition.operator, field: firstCondition.field }
+          );
       }
-    } catch (error: any) {
-      // 捕获 DatabaseClosedError 并返回空结果
-      if (error.name === 'DatabaseClosedError') {
-        console.warn('Database was closed during query execution, returning empty results');
-        return [];
+    } catch (error) {
+      // 如果是 WebGeoDBError，直接抛出
+      if (error instanceof Error && 'code' in error) {
+        throw error;
+      }
+      // 包装其他错误
+      if (error instanceof Error) {
+        throw ErrorFactory.queryError(
+          `Failed to execute attribute query on table '${this.tableName}': ${error.message}`,
+          {
+            table: this.tableName,
+            conditions: this.conditions
+          },
+          error
+        );
       }
       throw error;
     }
@@ -422,38 +500,57 @@ export class QueryBuilder<T = any> {
     geometry: Geometry,
     condition: SpatialQueryCondition
   ): boolean {
-    // 使用空间引擎执行谓词
-    switch (condition.predicate) {
-      case 'intersects':
-        return this.spatialEngine.intersects(geometry, condition.geometry);
+    try {
+      // 使用空间引擎执行谓词
+      switch (condition.predicate) {
+        case 'intersects':
+          return this.spatialEngine.intersects(geometry, condition.geometry);
 
-      case 'contains':
-        // 对于 Point，不能用 contains（点不能包含其他几何）
-        if (geometry.type === 'Point') {
-          return false;
-        }
-        return this.spatialEngine.contains(geometry, condition.geometry);
+        case 'contains':
+          // 对于 Point，不能用 contains（点不能包含其他几何）
+          if (geometry.type === 'Point') {
+            return false;
+          }
+          return this.spatialEngine.contains(geometry, condition.geometry);
 
-      case 'within':
-        return this.spatialEngine.within(geometry, condition.geometry);
+        case 'within':
+          return this.spatialEngine.within(geometry, condition.geometry);
 
-      case 'equals':
-        return this.spatialEngine.equals(geometry, condition.geometry);
+        case 'equals':
+          return this.spatialEngine.equals(geometry, condition.geometry);
 
-      case 'disjoint':
-        return this.spatialEngine.disjoint(geometry, condition.geometry);
+        case 'disjoint':
+          return this.spatialEngine.disjoint(geometry, condition.geometry);
 
-      case 'crosses':
-        return this.spatialEngine.crosses(geometry, condition.geometry);
+        case 'crosses':
+          return this.spatialEngine.crosses(geometry, condition.geometry);
 
-      case 'touches':
-        return this.spatialEngine.touches(geometry, condition.geometry);
+        case 'touches':
+          return this.spatialEngine.touches(geometry, condition.geometry);
 
-      case 'overlaps':
-        return this.spatialEngine.overlaps(geometry, condition.geometry);
+        case 'overlaps':
+          return this.spatialEngine.overlaps(geometry, condition.geometry);
 
-      default:
-        throw new Error(`Unknown spatial predicate: ${(condition as any).predicate}`);
+        default:
+          throw ErrorFactory.queryError(
+            `Unknown spatial predicate: ${(condition as any).predicate}`,
+            { predicate: (condition as any).predicate }
+          );
+      }
+    } catch (error) {
+      // 如果是 WebGeoDBError，直接抛出
+      if (error instanceof Error && 'code' in error) {
+        throw error;
+      }
+      // 包装其他错误
+      if (error instanceof Error) {
+        throw ErrorFactory.queryError(
+          `Failed to check spatial condition '${condition.predicate}': ${error.message}`,
+          { predicate: condition.predicate, geometry },
+          error
+        );
+      }
+      throw error;
     }
   }
 

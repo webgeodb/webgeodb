@@ -265,7 +265,7 @@ export class TurfEngine implements SpatialEngine {
       const line = geometry as LineString;
       // 检查点是否在线的内部（不是端点）
       for (let i = 0; i < line.coordinates.length - 1; i++) {
-        if (this.pointOnSegment(point.coordinates, line.coordinates[i], line.coordinates[i + 1])) {
+        if (this.pointOnSegment(point.coordinates as [number, number], line.coordinates[i] as [number, number], line.coordinates[i + 1] as [number, number])) {
           // 检查是否是端点
           if (!this.coordinatesEqual(point.coordinates, line.coordinates[0]) &&
               !this.coordinatesEqual(point.coordinates, line.coordinates[line.coordinates.length - 1])) {
@@ -292,10 +292,10 @@ export class TurfEngine implements SpatialEngine {
     for (let i = 0; i < line1.coordinates.length - 1; i++) {
       for (let j = 0; j < line2.coordinates.length - 1; j++) {
         const intersection = this.getSegmentIntersection(
-          line1.coordinates[i],
-          line1.coordinates[i + 1],
-          line2.coordinates[j],
-          line2.coordinates[j + 1]
+          line1.coordinates[i] as [number, number],
+          line1.coordinates[i + 1] as [number, number],
+          line2.coordinates[j] as [number, number],
+          line2.coordinates[j + 1] as [number, number]
         );
 
         if (intersection) {
@@ -346,9 +346,9 @@ export class TurfEngine implements SpatialEngine {
    * 检查点是否在多边形内
    */
   private pointInPolygon(point: Point, polygon: Polygon): boolean {
-    const coords = point.coordinates;
+    const coords = point.coordinates as [number, number];
     const rings = polygon.coordinates;
-    const exteriorRing = rings[0];
+    const exteriorRing = rings[0] as [number, number][];
 
     // 检查点是否在外环内
     return this.pointInRing(coords, exteriorRing);
@@ -386,12 +386,12 @@ export class TurfEngine implements SpatialEngine {
    * 检查点是否在多边形边界上
    */
   private pointOnPolygonBoundary(point: Point, polygon: Polygon): boolean {
-    const coords = point.coordinates;
+    const coords = point.coordinates as [number, number];
     const rings = polygon.coordinates;
 
     // 检查所有环
     for (const ring of rings) {
-      if (this.pointOnRing(coords, ring)) {
+      if (this.pointOnRing(coords, ring as [number, number][])) {
         return true;
       }
     }
@@ -453,9 +453,9 @@ export class TurfEngine implements SpatialEngine {
    */
   private pointOnLineString(point: Point, line: LineString): boolean {
     return this.pointOnSegment(
-      point.coordinates,
-      line.coordinates[0],
-      line.coordinates[line.coordinates.length - 1]
+      point.coordinates as [number, number],
+      line.coordinates[0] as [number, number],
+      line.coordinates[line.coordinates.length - 1] as [number, number]
     );
   }
 
@@ -681,10 +681,10 @@ export class TurfEngine implements SpatialEngine {
     for (let i = 0; i < line1.coordinates.length - 1; i++) {
       for (let j = 0; j < line2.coordinates.length - 1; j++) {
         const intersection = this.getSegmentIntersection(
-          line1.coordinates[i],
-          line1.coordinates[i + 1],
-          line2.coordinates[j],
-          line2.coordinates[j + 1]
+          line1.coordinates[i] as [number, number],
+          line1.coordinates[i + 1] as [number, number],
+          line2.coordinates[j] as [number, number],
+          line2.coordinates[j + 1] as [number, number]
         );
 
         if (intersection) {
