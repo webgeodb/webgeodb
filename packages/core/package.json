@@ -40,6 +40,9 @@
   ],
   "author": "",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@turf/turf": "^6.5.0",
     "dexie": "^3.2.4",
