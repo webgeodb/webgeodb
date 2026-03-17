@@ -33,7 +33,10 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install workspace dependencies
+        run: pnpm -r install --frozen-lockfile
 
       - name: Build core package
         run: pnpm --filter @webgeodb/core build
