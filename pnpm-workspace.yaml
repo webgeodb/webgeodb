@@ -1,3 +1,4 @@
 packages:
   - 'packages/*'
-  - 'examples/*'
+  - 'examples/tutorial-*'
+  - 'examples/basic-usage'

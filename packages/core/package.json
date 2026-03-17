@@ -1,5 +1,5 @@
 {
-  "name": "webgeodb-core",
+  "name": "@webgeodb/core",
   "version": "0.2.0-beta",
   "description": "WebGeoDB core engine - Spatial Database for the Modern Web",
   "main": "./dist/index.js",
