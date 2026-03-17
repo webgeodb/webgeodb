@@ -3,6 +3,13 @@ dist
 .turbo
 .next
 coverage
+# 临时文件
 *.log
 .env*.local
 .DS_Store
+
+# 开发过程文档（已移到团队根目录）
+docs/reports/
+MIGRATION-SUMMARY.md
+NEXT_ACTIONS.md
+CLAUDE_SETUP.md
