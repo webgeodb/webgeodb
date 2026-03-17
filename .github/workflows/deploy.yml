@@ -33,21 +33,18 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Install workspace dependencies
-        run: pnpm -r install --frozen-lockfile
+        run: pnpm install
 
       - name: Build core package
         run: pnpm --filter @webgeodb/core build
 
       - name: Build Vite apps
         run: |
-          cd examples/tutorial-04/01-offline-map && pnpm build
-          cd ../02-location-tracking && pnpm build
-          cd ../03-fitness-tracker && pnpm build
-          cd ../../projects/geo-fencing && pnpm build
-          cd ../environmental-monitoring && pnpm build
+          cd examples/tutorial-04/01-offline-map && pnpm install && pnpm build
+          cd ../../tutorial-04/02-location-tracking && pnpm install && pnpm build
+          cd ../03-fitness-tracker && pnpm install && pnpm build
+          cd ../../projects/geo-fencing && pnpm install && pnpm build
+          cd ../environmental-monitoring && pnpm install && pnpm build
 
       - name: Prepare deployment
         run: |
