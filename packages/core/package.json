@@ -1,6 +1,6 @@
 {
-  "name": "@webgeodb/core",
-  "version": "0.2.0-beta",
+  "name": "webgeodb-core",
+  "version": "0.2.1-beta",
   "description": "WebGeoDB core engine - Spatial Database for the Modern Web",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -40,9 +40,6 @@
   ],
   "author": "",
   "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  },
   "dependencies": {
     "@turf/turf": "^6.5.0",
     "dexie": "^3.2.4",
