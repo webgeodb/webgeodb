@@ -318,7 +318,7 @@ export class SQLToQueryBuilderTranslator {
 
     const firstArg = args[0];
     if (this.isColumnReference(firstArg)) {
-      return firstArg.column;
+      return this.extractFieldName(firstArg);
     }
 
     return undefined;
@@ -332,9 +332,14 @@ export class SQLToQueryBuilderTranslator {
 
     const arg = args[0];
 
-    // 检查是否是 ST_MakePoint 函数
-    if (this.isFunctionNamed(arg, 'ST_MakePoint')) {
+    // 检查是否是 ST_MakePoint 或 ST_Point 函数
+    if (this.isFunctionNamed(arg, 'ST_MakePoint') || this.isFunctionNamed(arg, 'ST_Point')) {
       return this.extractGeometryFromMakePoint(arg as FunctionCall);
+    }
+
+    // 检查是否是 ST_BoundingBox 函数
+    if (this.isFunctionNamed(arg, 'ST_BoundingBox')) {
+      return this.extractGeometryFromBoundingBox(arg as FunctionCall);
     }
 
     // 检查是否是 ST_GeomFromText 函数
@@ -364,6 +369,26 @@ export class SQLToQueryBuilderTranslator {
     return {
       type: 'Point',
       coordinates: coords.slice(0, 2) as [number, number]
+    };
+  }
+
+  /**
+   * 从 ST_BoundingBox(minX, minY, maxX, maxY) 提取多边形几何（矩形）
+   */
+  private extractGeometryFromBoundingBox(func: FunctionCall): Geometry {
+    const [minX, minY, maxX, maxY] = func.arguments.map(arg =>
+      this.extractLiteralValue(arg)
+    ) as [number, number, number, number];
+
+    return {
+      type: 'Polygon',
+      coordinates: [[
+        [minX, minY],
+        [maxX, minY],
+        [maxX, maxY],
+        [minX, maxY],
+        [minX, minY]
+      ]]
     };
   }
 

@@ -202,28 +202,54 @@ export class Parser {
         return {
           type: 'column',
           table: col.table,
-          name: col.column,
+          name: this.extractColumnName(col.column),
           alias: col.as
         };
       }
 
       if (col.type === 'function') {
+        const fnName = this.extractFunctionName(col.name);
         return {
           type: 'function',
-          name: col.name,
+          name: fnName,
           alias: col.as,
           expression: this.convertExpression(col)
         };
       }
 
-      // 处理聚合函数：{ type: 'expr', expr: { type: 'aggr_func', ... } }
-      if (col.type === 'expr' && col.expr?.type === 'aggr_func') {
-        return {
-          type: 'function',
-          name: col.expr.name,
-          alias: col.as,
-          expression: this.convertExpression(col.expr)
-        };
+      // 处理 expr 包装结构（node-sql-parser PostgreSQL 模式常见格式）
+      // { type: 'expr', expr: { type: 'column_ref' | 'function' | 'aggr_func', ... }, as: alias }
+      if (col.type === 'expr') {
+        const innerExpr = col.expr;
+
+        if (innerExpr?.type === 'column_ref') {
+          return {
+            type: 'column',
+            table: innerExpr.table,
+            name: this.extractColumnName(innerExpr.column),
+            alias: col.as
+          };
+        }
+
+        if (innerExpr?.type === 'function') {
+          const fnName = this.extractFunctionName(innerExpr.name);
+          return {
+            type: 'function',
+            name: fnName,
+            alias: col.as,
+            expression: this.convertExpression(innerExpr)
+          };
+        }
+
+        if (innerExpr?.type === 'aggr_func') {
+          const fnName = this.extractFunctionName(innerExpr.name);
+          return {
+            type: 'function',
+            name: fnName,
+            alias: col.as,
+            expression: this.convertExpression(innerExpr)
+          };
+        }
       }
 
       return {
@@ -315,11 +341,18 @@ export class Parser {
    * 转换 GROUP BY 子句
    */
   private convertGroupBy(groupBy: any): string[] {
-    if (!Array.isArray(groupBy)) {
-      groupBy = [groupBy];
-    }
+    // PostgreSQL 模式返回 { columns: [...] }，MySQL 模式返回数组
+    const items = Array.isArray(groupBy)
+      ? groupBy
+      : (Array.isArray(groupBy?.columns) ? groupBy.columns : [groupBy]);
 
-    return groupBy.map((col: any) => col.column || col.value || String(col));
+    return items.map((col: any) => {
+      // { type: 'column_ref', column: {expr:{type:'default', value:'geom_type'}} }
+      if (col?.type === 'column_ref' || col?.column !== undefined) {
+        return this.extractColumnName(col.column);
+      }
+      return col.value || String(col);
+    });
   }
 
   /**
@@ -384,12 +417,17 @@ export class Parser {
           argument: this.convertExpression(expr.argument)
         };
 
-      case 'function':
+      case 'function': {
+        // node-sql-parser PostgreSQL 模式下 expr.name 可能是对象/数组格式
+        const fnName = this.extractFunctionName(expr.name);
+        // 参数可能在 expr.args.expr_list 或 expr.args.value 里
+        const argList = expr.args?.expr_list || expr.args?.value || [];
         return {
           type: 'function',
-          name: expr.name,
-          arguments: expr.args.expr_list ? expr.args.expr_list.map((arg: any) => this.convertExpression(arg)) : []
+          name: fnName,
+          arguments: Array.isArray(argList) ? argList.map((arg: any) => this.convertExpression(arg)) : []
         };
+      }
 
       case 'aggr_func':
         // 聚合函数：COUNT(*), SUM(price), etc.
@@ -474,6 +512,50 @@ export class Parser {
 
         throw new Error(`不支持的表达式类型: ${expr.type}`);
     }
+  }
+
+  /**
+   * 从 node-sql-parser 的各种函数名格式中安全提取字符串函数名
+   * PostgreSQL 模式下，函数名可能是：
+   * - 字符串: 'ST_GeometryType'
+   * - 对象: { name: 'ST_GeometryType' } 或 { value: 'ST_GeometryType' }
+   * - 数组: [{ type: 'default', value: 'ST_GeometryType' }]
+   */
+  private extractFunctionName(name: any): string {
+    if (!name) return 'unknown';
+    if (typeof name === 'string') return name;
+    if (Array.isArray(name)) {
+      // [{ type: 'default', value: 'ST_GeometryType' }]
+      const first = name[0];
+      if (!first) return 'unknown';
+      if (typeof first === 'string') return first;
+      return first.value || first.name || 'unknown';
+    }
+    if (typeof name === 'object') {
+      // { name: [{ type: 'default', value: 'ST_GeometryType' }] }
+      if (Array.isArray(name.name)) return this.extractFunctionName(name.name);
+      if (typeof name.name === 'string') return name.name;
+      if (typeof name.value === 'string') return name.value;
+    }
+    return 'unknown';
+  }
+
+  /**
+   * 从 node-sql-parser 的列名格式中安全提取字符串列名
+   * PostgreSQL 模式下，column 可能是：
+   * - 字符串: 'id'
+   * - 对象: { expr: { type: 'default', value: 'id' } }
+   */
+  private extractColumnName(column: any): string {
+    if (!column) return 'unknown';
+    if (typeof column === 'string') return column;
+    if (typeof column === 'object') {
+      if (column.expr) {
+        return column.expr.value || column.expr.name || 'unknown';
+      }
+      return column.value || column.name || 'unknown';
+    }
+    return 'unknown';
   }
 
   /**

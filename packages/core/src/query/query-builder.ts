@@ -295,12 +295,59 @@ export class QueryBuilder<T = any> {
       }
 
       // 使用空间索引搜索
+      const t1 = performance.now();
       const candidates = this.spatialIndex.search(searchBBox);
+      const t2 = performance.now();
 
-      // 从数据库加载候选项
+      let results: T[];
+
+      // 优化：如果索引中已存储完整数据，直接返回，无需回查 IndexedDB
+      const candidatesWithData = candidates.filter((item: any) => item.data);
+      if (candidatesWithData.length === candidates.length && candidates.length > 0) {
+        // 所有候选都有完整数据，直接返回
+        results = candidates.map((item: any) => item.data as T);
+        const t3 = performance.now();
+        console.log(`[WebGeoDB] path=indexData, rtree: ${(t2-t1).toFixed(1)}ms, total: ${(t3-t1).toFixed(1)}ms, candidates: ${candidates.length}`);
+        return results;
+      }
+
+      // 部分或全部候选没有数据，需要从数据库加载
       const ids = candidates.map((item: any) => item.id);
       const table = this.storage.getTable<T>(this.tableName);
-      const results = await table.where('id').anyOf(ids as string[]).toArray();
+
+      // 优化策略：根据候选集大小选择加载方式
+      const totalCount = this.spatialIndex.size();
+      const ta = performance.now();
+
+      // 如果有部分候选已有数据，只需要加载缺失的部分
+      if (candidatesWithData.length > 0) {
+        const idsWithData = new Set(candidatesWithData.map((item: any) => String(item.id)));
+        const missingIds = ids.filter((id: any) => !idsWithData.has(String(id)));
+
+        if (missingIds.length > 0) {
+          const missingResults = await table.where('id').anyOf(missingIds as string[]).toArray();
+          results = [
+            ...candidatesWithData.map((item: any) => item.data as T),
+            ...missingResults
+          ];
+        } else {
+          results = candidatesWithData.map((item: any) => item.data as T);
+        }
+        console.log(`[WebGeoDB] path=mixed, loaded ${missingIds.length} from db, ${candidatesWithData.length} from index`);
+      } else if (ids.length > 100 || (totalCount > 0 && ids.length / totalCount > 0.03)) {
+        // 候选集较大，全表扫描更快
+        const idSet = new Set(ids.map(String));
+        const all = await table.toArray();
+        results = all.filter((item: any) => idSet.has(String(item.id)));
+        console.log(`[WebGeoDB] path=fullscan, toArray: ${(performance.now()-ta).toFixed(1)}ms`);
+      } else {
+        // 候选集较小，使用 anyOf
+        results = await table.where('id').anyOf(ids as string[]).toArray();
+        console.log(`[WebGeoDB] path=anyOf(${ids.length}), fetch: ${(performance.now()-ta).toFixed(1)}ms`);
+      }
+
+      const t3 = performance.now();
+      console.log(`[WebGeoDB] rtree: ${(t2-t1).toFixed(1)}ms, db fetch: ${(t3-t2).toFixed(1)}ms, candidates: ${candidates.length}, results: ${results.length}`);
 
       return results;
     } catch (error) {

@@ -60,7 +60,7 @@ export class PreparedSQLStatement {
   private sql: string;
   private parseResult: SQLParseResult;
   private storage: IndexedDBStorage;
-  private spatialIndex: SpatialIndex | null;
+  private spatialIndices: Map<string, SpatialIndex> | null;
   private spatialEngine: SpatialEngine;
   private cache: SQLQueryCache;
 
@@ -68,14 +68,14 @@ export class PreparedSQLStatement {
     sql: string,
     parseResult: SQLParseResult,
     storage: IndexedDBStorage,
-    spatialIndex: SpatialIndex | null,
+    spatialIndices: Map<string, SpatialIndex> | null,
     spatialEngine: SpatialEngine,
     cache: SQLQueryCache
   ) {
     this.sql = sql;
     this.parseResult = parseResult;
     this.storage = storage;
-    this.spatialIndex = spatialIndex;
+    this.spatialIndices = spatialIndices;
     this.spatialEngine = spatialEngine;
     this.cache = cache;
   }
@@ -93,7 +93,7 @@ export class PreparedSQLStatement {
     return SQLExecutor.execute(
       this.sql,
       this.storage,
-      this.spatialIndex,
+      this.spatialIndices,
       this.spatialEngine,
       options
     );
@@ -134,7 +134,7 @@ export class SQLExecutor {
   static async execute(
     sql: string,
     storage: IndexedDBStorage,
-    spatialIndex: SpatialIndex | null,
+    spatialIndices: Map<string, SpatialIndex> | null,
     spatialEngine: SpatialEngine,
     options: SQLExecuteOptions = {}
   ): Promise<SQLExecuteResult> {
@@ -162,7 +162,7 @@ export class SQLExecutor {
           return this.executeSelect(
             statement as SQLSelectStatement,
             storage,
-            spatialIndex,
+            spatialIndices,
             spatialEngine
           );
 
@@ -170,21 +170,21 @@ export class SQLExecutor {
           return this.executeInsert(
             statement as SQLInsertStatement,
             storage,
-            spatialIndex
+            spatialIndices
           );
 
         case 'update':
           return this.executeUpdate(
             statement as SQLUpdateStatement,
             storage,
-            spatialIndex
+            spatialIndices
           );
 
         case 'delete':
           return this.executeDelete(
             statement as SQLDeleteStatement,
             storage,
-            spatialIndex
+            spatialIndices
           );
 
         default:
@@ -221,7 +221,7 @@ export class SQLExecutor {
   private static async executeSelect(
     statement: SQLSelectStatement,
     storage: IndexedDBStorage,
-    spatialIndex: SpatialIndex | null,
+    spatialIndices: Map<string, SpatialIndex> | null,
     spatialEngine: SpatialEngine
   ): Promise<any[]> {
     // 检查数据库是否已关闭
@@ -232,6 +232,9 @@ export class SQLExecutor {
     try {
       // 检查是否包含聚合函数
       const hasAggregateFunctions = this.hasAggregateFunctions(statement);
+
+      // 解析该表对应的空间索引
+      const spatialIndex = spatialIndices?.get(statement.from) ?? null;
 
       // 创建 QueryBuilder
       const QueryBuilderClass = (await import('../query/query-builder')).QueryBuilder;
@@ -251,11 +254,25 @@ export class SQLExecutor {
       // 处理列选择
       // 如果包含聚合函数，使用聚合处理器
       if (hasAggregateFunctions) {
+        // 在聚合前先预计算非聚合的函数列（如 ST_GeometryType），以便 GROUP BY 可用
+        const nonAggregateFunctionCols = statement.columns.filter((col: any) =>
+          col.type === 'function' && !AggregateFunctionProcessor.isAggregateFunction(col)
+        );
+        if (nonAggregateFunctionCols.length > 0) {
+          results = results.map(row => {
+            const enriched = { ...row };
+            nonAggregateFunctionCols.forEach((col: any) => {
+              const alias = col.alias || col.name || 'computed';
+              enriched[alias] = this.evaluateFunction(col, row, spatialEngine);
+            });
+            return enriched;
+          });
+        }
         results = this.processAggregateFunctions(results, statement);
       } else {
         // 处理列选择
         if (statement.columns.length > 0 && !this.isWildcardSelect(statement.columns)) {
-          results = this.projectColumns(results, statement.columns);
+          results = this.projectColumns(results, statement.columns, spatialEngine);
         }
       }
       // 处理 DISTINCT
@@ -263,8 +280,8 @@ export class SQLExecutor {
         results = this.distinct(results);
       }
 
-      // 处理 GROUP BY
-      if (statement.groupBy && statement.groupBy.length > 0) {
+      // 处理 GROUP BY（仅在没有聚合函数时，聚合函数已在 processAggregateFunctions 中处理了分组）
+      if (!hasAggregateFunctions && statement.groupBy && statement.groupBy.length > 0) {
         results = this.groupBy(results, statement.groupBy);
       }
 
@@ -292,7 +309,7 @@ export class SQLExecutor {
   private static async executeInsert(
     statement: SQLInsertStatement,
     storage: IndexedDBStorage,
-    spatialIndex: SpatialIndex | null
+    spatialIndices: Map<string, SpatialIndex> | null
   ): Promise<any[]> {
     // 检查数据库是否已关闭
     if (!storage.isOpen) {
@@ -336,7 +353,7 @@ export class SQLExecutor {
   private static async executeUpdate(
     statement: SQLUpdateStatement,
     storage: IndexedDBStorage,
-    spatialIndex: SpatialIndex | null
+    spatialIndices: Map<string, SpatialIndex> | null
   ): Promise<any[]> {
     // 检查数据库是否已关闭
     if (!storage.isOpen) {
@@ -376,7 +393,7 @@ export class SQLExecutor {
   private static async executeDelete(
     statement: SQLDeleteStatement,
     storage: IndexedDBStorage,
-    spatialIndex: SpatialIndex | null
+    spatialIndices: Map<string, SpatialIndex> | null
   ): Promise<any[]> {
     // 检查数据库是否已关闭
     if (!storage.isOpen) {
@@ -413,7 +430,19 @@ export class SQLExecutor {
   /**
    * 投影列
    */
-  private static projectColumns(results: any[], columns: any[]): any[] {
+  private static projectColumns(results: any[], columns: any[], spatialEngine: SpatialEngine): any[] {
+    console.log('[SQL Executor] projectColumns called with', columns.length, 'columns');
+    columns.forEach((col, i) => {
+      // 安全地序列化列对象
+      const safeCol = JSON.parse(JSON.stringify(col, (key, value) => {
+        if (typeof value === 'function') {
+          return '[Function]';
+        }
+        return value;
+      }));
+      console.log(`[SQL Executor] Column ${i}:`, JSON.stringify(safeCol));
+    });
+
     return results.map(row => {
       const projected: any = {};
 
@@ -421,16 +450,244 @@ export class SQLExecutor {
         if (col.type === 'wildcard') {
           Object.assign(projected, row);
         } else if (col.type === 'column') {
-          const value = col.table ? row[col.table]?.[col.name] : row[col.name];
-          projected[col.alias || col.name] = value;
+          // 检查 name 字段是否是对象（函数调用）
+          if (col.name && typeof col.name === 'object') {
+            console.log('[SQL Executor] Column type is "column" but name is an object, evaluating as function');
+            const result = this.evaluateFunction(col.name, row, spatialEngine);
+            const colName = col.alias || 'computed';
+            console.log('[SQL Executor] Function evaluation result:', { colName, result });
+            projected[colName] = result;
+          } else {
+            const value = col.table ? row[col.table]?.[col.name] : row[col.name];
+            projected[col.alias || col.name] = value;
+          }
         } else if (col.type === 'function') {
-          // TODO: 处理函数调用
-          projected[col.alias || col.name] = null;
+          // 处理函数调用
+          console.log('[SQL Executor] Processing function column:', col);
+          const result = this.evaluateFunction(col, row, spatialEngine);
+          const colName = col.alias || this.getFunctionName(col);
+          console.log('[SQL Executor] Function result:', { colName, result });
+          projected[colName] = result;
+        } else {
+          // 未知的列类型 - 尝试检查 name 字段是否是对象
+          console.log('[SQL Executor] Unknown column type:', col.type, 'with structure:', JSON.parse(JSON.stringify(col, (key, value) => {
+            if (typeof value === 'function') return '[Function]';
+            return value;
+          })));
+
+          // 检查 name 字段是否包含函数调用
+          if (col.name && typeof col.name === 'object') {
+            console.log('[SQL Executor] Column name is an object, likely a function call');
+            const result = this.evaluateFunction(col.name, row, spatialEngine);
+            const colName = col.alias || 'computed';
+            projected[colName] = result;
+          } else {
+            projected[col.alias || col.name || 'unknown'] = null;
+          }
         }
       });
 
       return projected;
     });
+  }
+
+  /**
+   * 计算函数值
+   */
+  private static evaluateFunction(func: any, row: any, spatialEngine: SpatialEngine): any {
+    const funcName = this.getFunctionName(func);
+    // 参数可能在多个位置：直接属性、expression 子对象中
+    const args = func.args || func.arguments || func.expression?.arguments || func.expression?.args || [];
+
+    console.log(`[SQL Executor] Evaluating function: ${funcName} with args:`, args);
+
+    switch (funcName) {
+      case 'ST_Distance': {
+        // ST_Distance(geometry, point)
+        if (args.length < 2) return null;
+
+        const geomExpr = args[0];
+        const pointExpr = args[1];
+
+        // 获取几何数据
+        const geom = this.extractGeometryValue(geomExpr, row);
+        const point = this.extractPointValue(pointExpr);
+
+        if (!geom || !point) return null;
+
+        // 使用 SpatialEngine 计算距离
+        const distance = spatialEngine.distance(geom, point);
+        console.log(`[SQL Executor] ST_Distance result:`, distance);
+        return distance;
+      }
+
+      case 'ST_GeometryType': {
+        // ST_GeometryType(geometry)
+        if (args.length < 1) return null;
+
+        const geomExpr = args[0];
+        const geom = this.extractGeometryValue(geomExpr, row);
+
+        if (!geom) return null;
+
+        const geomType = geom.type || 'Unknown';
+        console.log(`[SQL Executor] ST_GeometryType result:`, geomType);
+        return geomType;
+      }
+
+      case 'ST_BoundingBox': {
+        // ST_BoundingBox(geometry)
+        if (args.length < 1) return null;
+
+        const geomExpr = args[0];
+        const geom = this.extractGeometryValue(geomExpr, row);
+
+        if (!geom || !geom.coordinates) return null;
+
+        // 计算边界框
+        const bbox = this.calculateBoundingBox(geom);
+        console.log(`[SQL Executor] ST_BoundingBox result:`, bbox);
+        return bbox;
+      }
+
+      case 'ST_MakePoint': {
+        // ST_MakePoint(x, y)
+        if (args.length < 2) return null;
+
+        const x = this.extractLiteralValue(args[0]);
+        const y = this.extractLiteralValue(args[1]);
+
+        if (x === null || y === null) return null;
+
+        const point = { type: 'Point', coordinates: [x, y] };
+        console.log(`[SQL Executor] ST_MakePoint result:`, point);
+        return point;
+      }
+
+      default:
+        console.warn(`[SQL Executor] Unsupported function: ${funcName}`);
+        return null;
+    }
+  }
+
+  /**
+   * 获取函数名称
+   */
+  private static getFunctionName(func: any): string {
+    return SQLExecutor.extractNameFromRaw(func.name || func.fn);
+  }
+
+  private static extractNameFromRaw(raw: any): string {
+    if (!raw) return 'unknown';
+    if (typeof raw === 'string') return raw;
+    if (Array.isArray(raw)) {
+      const first = raw[0];
+      if (!first) return 'unknown';
+      return typeof first === 'string' ? first : (first.value || first.name || 'unknown');
+    }
+    if (typeof raw === 'object') {
+      // { name: [...] } 格式
+      if (Array.isArray(raw.name)) return SQLExecutor.extractNameFromRaw(raw.name);
+      if (typeof raw.name === 'string') return raw.name;
+      if (typeof raw.value === 'string') return raw.value;
+    }
+    return 'unknown';
+  }
+
+  /**
+   * 提取几何值
+   */
+  private static extractGeometryValue(expr: any, row: any): any {
+    if (expr.type === 'column_ref') {
+      // expr.column 可能是字符串或嵌套对象 {expr:{type:'default', value:'geometry'}}
+      let colName: string;
+      if (typeof expr.column === 'string') {
+        colName = expr.column;
+      } else if (expr.column?.expr?.value) {
+        colName = expr.column.expr.value;
+      } else if (expr.column?.value) {
+        colName = expr.column.value;
+      } else {
+        colName = expr.value || '';
+      }
+      return row[colName];
+    }
+    return null;
+  }
+
+  /**
+   * 提取点值
+   */
+  private static extractPointValue(expr: any): any {
+    // 处理 ST_MakePoint(x, y) 或 ST_Point(x, y) 函数调用
+    if (expr.type === 'function' && (expr.name === 'ST_MakePoint' || expr.name === 'ST_Point' || expr.fn?.name === 'ST_MakePoint' || expr.fn?.name === 'ST_Point')) {
+      const args = expr.args || expr.arguments || [];
+      const x = this.extractLiteralValue(args[0]);
+      const y = this.extractLiteralValue(args[1]);
+      if (x !== null && y !== null) {
+        return { type: 'Point', coordinates: [x, y] };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 提取字面量值
+   */
+  private static extractLiteralValue(expr: any): any {
+    if (expr.type === 'single_quote_string' || expr.type === 'string') {
+      return expr.value;
+    }
+    if (expr.type === 'number') {
+      return Number(expr.value);
+    }
+    if (expr.type === 'bool') {
+      return expr.value;
+    }
+    if (expr.type === 'null') {
+      return null;
+    }
+    if (expr.value !== undefined) {
+      return expr.value;
+    }
+    return null;
+  }
+
+  /**
+   * 计算边界框
+   */
+  private static calculateBoundingBox(geom: any): any {
+    if (!geom.coordinates) return null;
+
+    const coords = geom.coordinates;
+    let minX: number, minY: number, maxX: number, maxY: number;
+
+    switch (geom.type) {
+      case 'Point':
+        [minX, minY] = coords;
+        [maxX, maxY] = coords;
+        break;
+
+      case 'LineString':
+        minX = Math.min(...coords.map((c: number[]) => c[0]));
+        minY = Math.min(...coords.map((c: number[]) => c[1]));
+        maxX = Math.max(...coords.map((c: number[]) => c[0]));
+        maxY = Math.max(...coords.map((c: number[]) => c[1]));
+        return { minX, minY, maxX, maxY };
+
+      case 'Polygon':
+        const ring = coords[0];
+        minX = Math.min(...ring.map((c: number[]) => c[0]));
+        minY = Math.min(...ring.map((c: number[]) => c[1]));
+        maxX = Math.max(...ring.map((c: number[]) => c[0]));
+        maxY = Math.max(...ring.map((c: number[]) => c[1]));
+        return { minX, minY, maxX, maxY };
+
+      default:
+        return null;
+    }
+
+    return { minX, minY, maxX, maxY };
   }
 
   /**
@@ -618,7 +875,7 @@ export class SQLExecutor {
   static prepare(
     sql: string,
     storage: IndexedDBStorage,
-    spatialIndex: SpatialIndex | null,
+    spatialIndices: Map<string, SpatialIndex> | null,
     spatialEngine: SpatialEngine
   ): PreparedSQLStatement {
     const parser = new Parser();
@@ -628,7 +885,7 @@ export class SQLExecutor {
       sql,
       parseResult,
       storage,
-      spatialIndex,
+      spatialIndices,
       spatialEngine,
       this.cache
     );

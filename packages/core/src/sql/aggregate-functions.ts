@@ -38,8 +38,33 @@ export class AggregateFunctionProcessor {
       return false;
     }
 
-    const name = expr.name?.toUpperCase();
-    return ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'].includes(name);
+    const name = AggregateFunctionProcessor.extractFunctionName(expr);
+    return ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'].includes(name.toUpperCase());
+  }
+
+  /**
+   * 从函数表达式中安全提取函数名（字符串）
+   */
+  private static extractFunctionName(expr: any): string {
+    const raw = expr.name || expr.fn;
+    return AggregateFunctionProcessor.extractNameFromRaw(raw);
+  }
+
+  private static extractNameFromRaw(raw: any): string {
+    if (!raw) return '';
+    if (typeof raw === 'string') return raw;
+    if (Array.isArray(raw)) {
+      const first = raw[0];
+      if (!first) return '';
+      return typeof first === 'string' ? first : (first.value || first.name || '');
+    }
+    if (typeof raw === 'object') {
+      // { name: [...] } 格式
+      if (Array.isArray(raw.name)) return AggregateFunctionProcessor.extractNameFromRaw(raw.name);
+      if (typeof raw.name === 'string') return raw.name;
+      if (typeof raw.value === 'string') return raw.value;
+    }
+    return '';
   }
 
   /**
@@ -50,7 +75,7 @@ export class AggregateFunctionProcessor {
       return null;
     }
 
-    const name = expr.name?.toUpperCase() as AggregateFunctionType;
+    const name = AggregateFunctionProcessor.extractFunctionName(expr).toUpperCase() as AggregateFunctionType;
 
     // 参数可能在 expr.arguments 或 expr.expression.arguments 中
     let args = expr.arguments || [];

@@ -138,7 +138,7 @@ export class WebGeoDB {
           const spatialIndex = self.spatialIndices.get(tableName);
           if (spatialIndex && data.geometry) {
             const bbox = getBBox(data.geometry);
-            spatialIndex.insert({ id: data.id, ...bbox });
+            spatialIndex.insert({ id: data.id, ...bbox, data });
           }
 
           return id as string;
@@ -179,7 +179,7 @@ export class WebGeoDB {
                 .filter(item => item[indexField])
                 .map(item => {
                   const bbox = getBBox(item[indexField]);
-                  return { id: item.id, ...bbox };
+                  return { id: item.id, ...bbox, data: item };
                 });
 
               spatialIndex.insertMany(indexItems);
@@ -475,7 +475,7 @@ export class WebGeoDB {
         .filter(item => item[field])
         .map(item => {
           const bbox = getBBox(item[field]);
-          return { id: item.id, ...bbox };
+          return { id: item.id, ...bbox, data: item };
         });
 
       spatialIndex.insertMany(indexItems);
@@ -531,7 +531,7 @@ export class WebGeoDB {
       const result = await SQLExecutor.execute(
         sql,
         this.storage,
-        null, // 不使用空间索引（在查询构建器中处理）
+        this.spatialIndices, // 传入空间索引 Map，SQL 空间查询可利用索引加速
         spatialEngine,
         executeOptions
       );
@@ -570,7 +570,7 @@ export class WebGeoDB {
       return SQLExecutor.prepare(
         sql,
         this.storage,
-        null, // 不使用空间索引（在查询构建器中处理）
+        this.spatialIndices, // 传入空间索引 Map
         spatialEngine
       );
     } catch (error) {

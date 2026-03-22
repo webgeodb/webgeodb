@@ -2,15 +2,32 @@
 
 ## 安装
 
+### 方式一：npm 包（推荐，模块化项目）
+
 ```bash
 # 使用 pnpm
-pnpm add @webgeodb/core
+pnpm add webgeodb-core
 
 # 使用 npm
-npm install @webgeodb/core
+npm install webgeodb-core
 
 # 使用 yarn
-yarn add @webgeodb/core
+yarn add webgeodb-core
+```
+
+```typescript
+import { WebGeoDB } from 'webgeodb-core';
+```
+
+### 方式二：浏览器直接引入（IIFE，无构建工具）
+
+```html
+<!-- 所有依赖已打包，直接暴露 window.WebGeoDB -->
+<script src="https://cdn.jsdelivr.net/npm/webgeodb-core/dist/index.global.js"></script>
+<script>
+  const { WebGeoDB } = window.WebGeoDB;
+  const db = new WebGeoDB({ name: 'my-db', version: 1 });
+</script>
 ```
 
 ## 基础使用
@@ -18,7 +35,7 @@ yarn add @webgeodb/core
 ### 1. 创建数据库
 
 ```typescript
-import { WebGeoDB } from '@webgeodb/core';
+import { WebGeoDB } from 'webgeodb-core';
 
 const db = new WebGeoDB({
   name: 'my-geo-db',
@@ -46,10 +63,12 @@ db.schema({
 await db.open();
 ```
 
-### 4. 创建空间索引
+### 4. 创建空间索引（必须在空间查询前调用）
 
 ```typescript
-db.features.createIndex('geometry', { auto: true });
+// ⚠️ 重要：创建空间索引必须 await，且在空间查询前调用
+// 空间索引基于 R-tree，所有数据存储在内存中，支持 O(log n) 查询
+await db.features.createIndex('geometry');
 ```
 
 ## CRUD 操作
@@ -164,9 +183,9 @@ const results = await db.features
 ### 距离查询
 
 ```typescript
-// 查询 1km 范围内的要素
+// 查询 200 米范围内的要素（distance 参数单位：米）
 const results = await db.features
-  .distance('geometry', [30, 10], '<', 1000)
+  .distance('geometry', [116.404, 39.915], '<', 200)
   .toArray();
 ```
 
@@ -234,16 +253,23 @@ const sorted = await db.query(`
 `);
 ```
 
-### PostGIS 空间查询
+## PostGIS 空间查询 🚀
+
+**Plan B 优化**：`db.query()` 中的 SQL 空间查询现在会自动利用 R-tree 空间索引，性能与链式 API 持平（均为 O(log n)）。
 
 使用熟悉的 PostGIS 函数进行空间查询：
 
 ```typescript
-// 距离查询
+// 距离查询（ST_Distance，单位：米）— 走空间索引，极快
 const nearby = await db.query(`
   SELECT * FROM features
-  WHERE ST_DWithin(geometry, ST_MakePoint(30, 10), 1000)
+  WHERE ST_Distance(geometry, ST_Point(116.404, 39.915)) < 200
 `);
+
+// 等价的链式 API 写法
+const nearby2 = await db.features
+  .distance('geometry', [116.404, 39.915], '<', 200)
+  .toArray();
 
 // 相交查询
 const polygon = 'POLYGON((29 9, 32 9, 32 12, 29 12, 29 9))';
@@ -329,7 +355,7 @@ db.invalidateQueryCache('features');
 ## 完整示例
 
 ```typescript
-import { WebGeoDB } from '@webgeodb/core';
+import { WebGeoDB } from 'webgeodb-core';
 
 async function main() {
   // 创建数据库
@@ -352,36 +378,43 @@ async function main() {
   // 打开数据库
   await db.open();
 
-  // 创建空间索引
-  db.features.createIndex('geometry', { auto: true });
-
-  // 插入数据
+  // 批量插入数据
   await db.features.insertMany([
     {
       id: '1',
       name: 'Restaurant A',
       type: 'restaurant',
-      geometry: { type: 'Point', coordinates: [30, 10] },
+      geometry: { type: 'Point', coordinates: [116.404, 39.915] },
       properties: { rating: 4.5 }
     },
     {
       id: '2',
       name: 'Restaurant B',
       type: 'restaurant',
-      geometry: { type: 'Point', coordinates: [31, 11] },
+      geometry: { type: 'Point', coordinates: [116.408, 39.918] },
       properties: { rating: 4.0 }
     }
   ]);
 
-  // 查询
+  // ⚠️ 必须先创建空间索引，才能使用空间查询（含 SQL 空间查询）
+  await db.features.createIndex('geometry');
+
+  // 链式 API 空间查询（200m 范围内）
   const results = await db.features
-    .where('type', '=', 'restaurant')
-    .where('properties.rating', '>', 4.2)
-    .orderBy('properties.rating', 'desc')
-    .limit(10)
+    .distance('geometry', [116.404, 39.915], '<', 200)
     .toArray();
 
-  console.log(results);
+  console.log('链式 API 结果:', results);
+
+  // SQL 空间查询（等价，同样走空间索引）
+  const sqlResults = await db.query(`
+    SELECT id, name, ST_Distance(geometry, ST_Point(116.404, 39.915)) AS dist
+    FROM features
+    WHERE ST_Distance(geometry, ST_Point(116.404, 39.915)) < 200
+    ORDER BY dist ASC
+  `);
+
+  console.log('SQL 查询结果:', sqlResults);
 
   // 关闭数据库
   await db.close();

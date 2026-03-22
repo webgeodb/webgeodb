@@ -90,4 +90,17 @@ export interface BBox {
  */
 export interface IndexItem extends BBox {
   id: string | number;
+  /**
+   * 完整数据存储（可选）
+   * 当设置此字段时，查询可直接从索引返回数据，无需回查 IndexedDB
+   */
+  data?: any;
+  /**
+   * 仅存储几何数据（内存优化选项）
+   */
+  geometry?: Geometry;
+  /**
+   * 仅存储属性数据（内存优化选项）
+   */
+  properties?: Record<string, any>;
 }
