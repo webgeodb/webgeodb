@@ -7,7 +7,7 @@
     "dev": "tsx index.ts"
   },
   "dependencies": {
-    "@webgeodb/core": "workspace:*"
+    "webgeodb-core": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.7.0"
