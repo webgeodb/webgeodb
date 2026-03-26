@@ -23,7 +23,7 @@ importers:
 
   examples/basic-usage:
     dependencies:
-      '@webgeodb/core':
+      webgeodb-core:
         specifier: workspace:*
         version: link:../../packages/core
     devDependencies:
