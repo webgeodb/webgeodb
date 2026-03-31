@@ -29,7 +29,7 @@ describe('WHERE 子句转换完整测试', () => {
     await db.features.clear();
 
     // 插入测试数据
-    await db.features.bulkAdd([
+    await db.features.insertMany([
       { id: '1', name: 'Restaurant A', type: 'restaurant', value: 100, active: true, rating: 4.5 },
       { id: '2', name: 'Cafe B', type: 'cafe', value: 200, active: true, rating: 4.0 },
       { id: '3', name: 'Shop C', type: 'shop', value: 300, active: false, rating: 3.5 },
@@ -134,7 +134,7 @@ describe('WHERE 子句转换完整测试', () => {
   describe('IS NULL 和 IS NOT NULL', () => {
     it('should handle IS NULL', async () => {
       // 先添加一个 null 值的记录
-      await db.features.add({
+      await db.features.insert({
         id: '6',
         name: 'Test',
         type: 'test',

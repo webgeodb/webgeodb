@@ -36,7 +36,7 @@ describe('Query Translator - WHERE Clause', () => {
     await db.features.clear();
 
     // 插入测试数据
-    await db.features.bulkAdd([
+    await db.features.insertMany([
       {
         id: '1',
         name: 'Restaurant A',
