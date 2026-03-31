@@ -84,21 +84,22 @@ export class SQLToQueryBuilderTranslator {
   ): void {
     const { operator, left, right } = expr;
 
+    // 处理 AND/OR 逻辑运算符（必须在函数调用检查之前！）
+    // 否则 AND 一侧有函数时会被误路由到 translateFunctionExpression
+    if (operator === 'AND' || operator === 'OR') {
+      this.translateLogicalExpression(expr, builder);
+      return;
+    }
+
     // 检查是否是空间函数调用
     if (this.isSpatialFunctionCall(left, right)) {
       this.translateSpatialFunction(expr, builder);
       return;
     }
 
-    // 检查是否是函数调用
+    // 检查是否是函数调用（如 ST_Distance(...) < N）
     if (this.isFunctionCall(left) || this.isFunctionCall(right)) {
       this.translateFunctionExpression(expr, builder);
-      return;
-    }
-
-    // 处理 AND/OR 逻辑运算符
-    if (operator === 'AND' || operator === 'OR') {
-      this.translateLogicalExpression(expr, builder);
       return;
     }
 
@@ -178,6 +179,8 @@ export class SQLToQueryBuilderTranslator {
 
   /**
    * 转换函数调用
+   * 处理 WHERE 子句中直接使用的空间函数（非比较表达式包裹的情况）
+   * 例如：ST_DWithin(geometry, point, distance)
    */
   private translateFunctionCall(
     expr: FunctionCall,
@@ -185,11 +188,44 @@ export class SQLToQueryBuilderTranslator {
   ): void {
     const { name, arguments: args } = expr;
 
-    // 检查是否是 PostGIS 函数
+    // ST_DWithin 裸调用：ST_DWithin(geometry, point, distance)
+    if (name === 'ST_DWithin' && args.length >= 3) {
+      const field = this.extractFieldFromArgs(args);
+      const geometry = this.extractGeometryFromArgs(args.slice(1, 2));
+      const distanceArg = args[2];
+      const distance = this.extractLiteralValue(distanceArg);
+      if (field && geometry && typeof distance === 'number') {
+        builder.distance(field, this.geometryToPoint(geometry), '<=', distance);
+      }
+      return;
+    }
+
+    // ST_Distance 裸调用：在比较表达式中已处理，此处作为 fallback
+    if (name === 'ST_Distance' && args.length >= 2) {
+      // ST_Distance 裸调用通常出现在比较表达式中 (ST_Distance(...) < N)
+      // 如果直接作为 boolean 使用，说明距离 > 0，即存在
+      const field = this.extractFieldFromArgs(args);
+      const geometry = this.extractGeometryFromArgs(args.slice(1, 2));
+      if (field && geometry) {
+        builder.distance(field, this.geometryToPoint(geometry), '<', Infinity);
+      }
+      return;
+    }
+
+    // 其他空间谓词函数（ST_Intersects、ST_Equals 等）
     if (name in POSTGIS_FUNCTION_MAP) {
       const predicate = POSTGIS_FUNCTION_MAP[name];
-      // PostGIS 函数应该在 WHERE 子句中处理
-      console.warn(`PostGIS 函数 ${name} 应该在 WHERE 子句中使用`);
+      const field = this.extractFieldFromArgs(args);
+      const geometry = this.extractGeometryFromArgs(args.slice(1, 2));
+      if (field && geometry) {
+        // 直接推入 spatialConditions，不依赖 builder 方法是否存在
+        (builder as any).spatialConditions.push({
+          field,
+          predicate,
+          geometry
+        });
+      }
+      return;
     }
   }
 
@@ -303,10 +339,14 @@ export class SQLToQueryBuilderTranslator {
 
     const args = func.arguments;
     const field = this.extractFieldFromArgs(args);
-    const geometry = this.extractGeometryFromArgs(args.slice(1));
+    const geometry = this.extractGeometryFromArgs(args.slice(1, 2));
 
     if (field && geometry) {
-      (builder as any)[predicate](field, geometry);
+      (builder as any).spatialConditions.push({
+        field,
+        predicate,
+        geometry
+      });
     }
   }
 
