@@ -101,8 +101,7 @@ describe('Query Translator - WHERE Clause', () => {
 
     it('should translate ORDER BY column DESC', async () => {
       const results = await db.features
-        .orderBy('name')
-        .reverse()
+        .orderBy('name', 'desc')
         .toArray();
 
       expect(results).toHaveLength(3);
