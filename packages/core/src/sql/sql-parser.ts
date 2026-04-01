@@ -501,6 +501,15 @@ export class Parser {
           value: `${expr.prefix || ''}${expr.name}`
         } as any;
 
+      case 'expr_list':
+        // IN/NOT IN 的值列表：保持 expr_list 结构
+        return {
+          type: 'expr_list',
+          value: Array.isArray(expr.value)
+            ? expr.value.map((item: any) => this.convertExpression(item))
+            : []
+        };
+
       default:
         // 处理值类型
         if (expr.value !== undefined) {

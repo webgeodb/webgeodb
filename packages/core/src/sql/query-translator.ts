@@ -165,16 +165,89 @@ export class SQLToQueryBuilderTranslator {
   ): void {
     const operator = expr.operator;
 
-    if (operator === 'AND' || operator === 'OR') {
-      // 递归处理左侧和右侧
+    if (operator === 'AND') {
+      // AND: 递归处理两侧，条件独立推入
       this.translateWhere(expr.left, builder);
       this.translateWhere(expr.right, builder);
+    } else if (operator === 'OR') {
+      // OR: 将两侧条件标记为 orGroup，交给 QueryBuilder 的全表扫描处理
+      this.translateOrCondition(expr, builder);
     } else if (expr.type === 'logical') {
       // 处理我们的逻辑表达式
       expr.operands.forEach((operand: ASTExpression) => {
         this.translateWhere(operand, builder);
       });
     }
+  }
+
+  /**
+   * 转换 OR 条件
+   * OR 条件需要标记为 _orGroup，让 QueryBuilder 走全表扫描路径
+   */
+  private translateOrCondition(
+    expr: any,
+    builder: QueryBuilder
+  ): void {
+    // 将 OR 两侧的条件都标记为 orGroup 后推入 builder
+    this.pushOrCondition(expr.left, builder);
+    this.pushOrCondition(expr.right, builder);
+  }
+
+  /**
+   * 将表达式作为 OR 条件推入 builder
+   */
+  private pushOrCondition(expr: ASTExpression, builder: QueryBuilder): void {
+    // 如果是简单的比较表达式（binary），直接推入带 _orGroup 标记的条件
+    if (this.isBinaryExpression(expr)) {
+      const { operator, left, right } = expr;
+
+      // AND/OR 嵌套 — 递归处理
+      if (operator === 'AND' || operator === 'OR') {
+        this.translateLogicalExpression(expr, builder);
+        return;
+      }
+
+      // 普通比较 — 推入带 orGroup 标记的条件
+      if (this.isColumnReference(left) && this.isLiteral(right)) {
+        const field = this.extractFieldName(left);
+        const value = this.extractLiteralValue(right);
+        const mappedOperator = this.mapOperator(operator);
+        if (mappedOperator) {
+          (builder as any).conditions.push({
+            field,
+            operator: mappedOperator,
+            value,
+            _orGroup: true
+          });
+        }
+        return;
+      }
+
+      if (this.isLiteral(left) && this.isColumnReference(right)) {
+        const field = this.extractFieldName(right);
+        const value = this.extractLiteralValue(left);
+        const reversedOperator = this.reverseOperator(operator);
+        if (reversedOperator) {
+          (builder as any).conditions.push({
+            field,
+            operator: reversedOperator,
+            value,
+            _orGroup: true
+          });
+        }
+        return;
+      }
+    }
+
+    // 函数调用（如空间函数）：不走 orGroup，走标准翻译路径
+    // 空间函数会被添加为 spatialCondition，由 applySpatialFilters 处理
+    if (this.isFunctionCall(expr)) {
+      this.translateWhere(expr, builder);
+      return;
+    }
+
+    // 其他情况：尝试标准翻译
+    this.translateWhere(expr, builder);
   }
 
   /**

@@ -28,6 +28,7 @@ export class QueryBuilder<T = any> {
   private limitValue?: number;
   private offsetValue?: number;
   private spatialEngine: SpatialEngine;
+  private usedFallbackScan: boolean = false; // 是否使用了全表扫描降级
 
   constructor(
     tableName: string,
@@ -389,9 +390,18 @@ export class QueryBuilder<T = any> {
         return await table.toArray();
       }
 
-      // 使用第一个条件作为主查询
+      // 检查是否需要降级为全表扫描
+      // 1. 有 OR 逻辑时需要全表扫描
+      // 2. 第一个条件的值不是有效的 IndexedDB key 时需要全表扫描
       const firstCondition = this.conditions[0];
+      const needsFallback = this.hasOrConditions() || !this.isValidIDBKeyValue(firstCondition);
 
+      if (needsFallback) {
+        this.usedFallbackScan = true;
+        return await this.executeFullTableScan();
+      }
+
+      // 使用第一个条件作为主查询（Dexie 索引路径）
       switch (firstCondition.operator) {
         case '=':
           return await table.where(firstCondition.field).equals(firstCondition.value).toArray();
@@ -456,6 +466,11 @@ export class QueryBuilder<T = any> {
       return results;
     }
 
+    // 全表扫描降级路径已在 executeFullTableScan 中处理了所有条件
+    if (this.usedFallbackScan) {
+      return results;
+    }
+
     // 如果有空间查询，需要应用所有属性条件
     // 如果只有属性查询，第一个条件已经在 executeAttributeQuery 中应用了
     const startIndex = this.spatialConditions.length > 0 ? 0 : 1;
@@ -514,6 +529,89 @@ export class QueryBuilder<T = any> {
       default:
         return false;
     }
+  }
+
+  /**
+   * 检查值是否为有效的 IndexedDB key
+   * IndexedDB 只接受 string, number, Date, binary 作为 key
+   * boolean, null, undefined, object 不是有效 key
+   */
+  private isValidIDBKeyValue(condition: QueryCondition): boolean {
+    const { operator, value } = condition;
+
+    // in/not in 需要检查数组内每个元素
+    if (operator === 'in' || operator === 'not in') {
+      if (!Array.isArray(value)) return false;
+      return value.every(v => this.isPrimitiveIDBKey(v));
+    }
+
+    // like/not like 走全表扫描，不需要检查
+    if (operator === 'like' || operator === 'not like') {
+      return true;
+    }
+
+    return this.isPrimitiveIDBKey(value);
+  }
+
+  private isPrimitiveIDBKey(value: any): boolean {
+    return typeof value === 'string' || typeof value === 'number' || value instanceof Date;
+  }
+
+  /**
+   * 检查是否有 OR 条件分组
+   */
+  private hasOrConditions(): boolean {
+    return this.conditions.some(c => (c as any)._orGroup);
+  }
+
+  /**
+   * 全表扫描 + JS 过滤（降级路径）
+   * 用于 OR 逻辑、boolean/null 值等 IndexedDB 不支持的场景
+   */
+  private async executeFullTableScan(): Promise<T[]> {
+    const table = this.storage.getTable<T>(this.tableName);
+    const allItems = await table.toArray();
+
+    // 分离 OR 条件组和普通 AND 条件
+    const orGroups: QueryCondition[][] = [];
+    const andConditions: QueryCondition[] = [];
+
+    let currentOrGroup: QueryCondition[] | null = null;
+    for (const condition of this.conditions) {
+      if ((condition as any)._orGroup) {
+        if (!currentOrGroup) {
+          currentOrGroup = [];
+          orGroups.push(currentOrGroup);
+        }
+        currentOrGroup.push(condition);
+      } else {
+        currentOrGroup = null;
+        andConditions.push(condition);
+      }
+    }
+
+    return allItems.filter(item => {
+      // AND 条件：全部必须满足
+      for (const condition of andConditions) {
+        const value = this.getNestedValue(item, condition.field);
+        if (!this.checkCondition(value, condition.operator, condition.value)) {
+          return false;
+        }
+      }
+
+      // OR 条件组：每组内任一满足即可
+      for (const group of orGroups) {
+        const groupMatch = group.some(condition => {
+          const value = this.getNestedValue(item, condition.field);
+          return this.checkCondition(value, condition.operator, condition.value);
+        });
+        if (!groupMatch) {
+          return false;
+        }
+      }
+
+      return true;
+    });
   }
 
   /**
