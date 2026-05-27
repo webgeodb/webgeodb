@@ -5,12 +5,12 @@
  */
 
 import { describe, bench, beforeAll } from 'vitest';
-import { TurfEngine } from '../../../src/spatial/engines/turf-engine';
-import { EngineRegistry } from '../../../src/spatial/engine-registry';
-import { intersectsOptimized, containsOptimized, withinOptimized } from '../../../src/spatial/predicates/optimized-predicates';
-import { touchesOptimized, overlapsOptimized } from '../../../src/spatial/predicates/advanced/advanced-predicates';
-import { OptimizedBuffer, OptimizedDistance } from '../../../src/spatial/topology/optimized-buffer';
-import type { Geometry, Point, LineString, Polygon } from '../../../src/types';
+import { TurfEngine } from '../../src/spatial/engines/turf-engine';
+import { EngineRegistry } from '../../src/spatial/engine-registry';
+import { intersectsOptimized, containsOptimized, withinOptimized } from '../../src/spatial/predicates/optimized-predicates';
+import { touchesOptimized, overlapsOptimized } from '../../src/spatial/predicates/advanced/advanced-predicates';
+import { OptimizedBuffer, OptimizedDistance } from '../../src/spatial/topology/optimized-buffer';
+import type { Geometry, Point, LineString, Polygon } from '../../src/types';
 
 describe('性能基准对比测试', () => {
   let engine: TurfEngine;

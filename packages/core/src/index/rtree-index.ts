@@ -65,7 +65,7 @@ export class RTreeIndex implements SpatialIndex {
 
   remove(item: IndexItem): void {
     try {
-      this.tree.remove(item);
+      this.tree.remove(item, (a, b) => a.id === b.id);
     } catch (error) {
       if (error instanceof Error) {
         throw ErrorFactory.indexError(

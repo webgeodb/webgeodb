@@ -37,7 +37,7 @@ describe('PostGIS Functions', () => {
     await db.open();
     await db.features.clear();
 
-    // 插入测试数据
+    // 插入测试数据（使用地理坐标，Haversine 距离计算）
     await db.features.insertMany([
       {
         id: '1',
@@ -47,23 +47,23 @@ describe('PostGIS Functions', () => {
       },
       {
         id: '2',
-        name: 'Point at (10, 10)',
+        name: 'Point 0.1 deg N',
         type: 'point',
-        geometry: { type: 'Point', coordinates: [10, 10] }
+        geometry: { type: 'Point', coordinates: [0, 0.1] }
       },
       {
         id: '3',
-        name: 'Point at (20, 20)',
+        name: 'Point 0.2 deg N',
         type: 'point',
-        geometry: { type: 'Point', coordinates: [20, 20] }
+        geometry: { type: 'Point', coordinates: [0, 0.2] }
       },
       {
         id: '4',
-        name: 'Line from (0,0) to (30,30)',
+        name: 'Line to 0.5 deg NE',
         type: 'line',
         geometry: {
           type: 'LineString',
-          coordinates: [[0, 0], [30, 30]]
+          coordinates: [[0, 0], [0.5, 0.5]]
         }
       },
       {
@@ -73,7 +73,7 @@ describe('PostGIS Functions', () => {
         geometry: {
           type: 'Polygon',
           coordinates: [
-            [[5, 5], [15, 5], [15, 15], [5, 15], [5, 5]]
+            [[0, 0], [0.05, 0], [0.05, 0.05], [0, 0.05], [0, 0]]
           ]
         }
       },
@@ -84,7 +84,7 @@ describe('PostGIS Functions', () => {
         geometry: {
           type: 'Polygon',
           coordinates: [
-            [[0, 0], [50, 0], [50, 50], [0, 50], [0, 0]]
+            [[-0.1, -0.1], [0.5, -0.1], [0.5, 0.5], [-0.1, 0.5], [-0.1, -0.1]]
           ]
         }
       }
@@ -100,8 +100,8 @@ describe('PostGIS Functions', () => {
   describe('ST_MakePoint', () => {
     it('should create a 2D point', async () => {
       const results = await db.query(
-        'SELECT * FROM features WHERE ST_Distance(geometry, ST_MakePoint($1, $2)) < 5',
-        [10, 10]
+        'SELECT * FROM features WHERE ST_Distance(geometry, ST_MakePoint($1, $2)) < 5000',
+        [0, 0.1]
       );
 
       expect(results.length).toBeGreaterThan(0);
@@ -109,8 +109,8 @@ describe('PostGIS Functions', () => {
 
     it('should create a 3D point', async () => {
       const results = await db.query(
-        'SELECT * FROM features WHERE ST_Distance(geometry, ST_MakePoint($1, $2, $3)) < 5',
-        [10, 10, 0]
+        'SELECT * FROM features WHERE ST_Distance(geometry, ST_MakePoint($1, $2, $3)) < 5000',
+        [0, 0.1, 0]
       );
 
       expect(results.length).toBeGreaterThan(0);
@@ -124,20 +124,20 @@ describe('PostGIS Functions', () => {
         ['2']
       );
 
-      expect(results[0].distance).toBeCloseTo(14.14, 1); // sqrt(10^2 + 10^2) ≈ 14.14
+      expect(results[0].distance).toBeCloseTo(11.12, 1); // Haversine (0,0)→(0,0.1) ≈ 11.12 km
     });
 
     it('should find points within distance', async () => {
       const results = await db.query(
-        'SELECT * FROM features WHERE ST_Distance(geometry, ST_MakePoint(0, 0)) < 15'
+        "SELECT * FROM features WHERE ST_Distance(geometry, ST_MakePoint(0, 0)) < 15000 AND type = 'point'"
       );
 
-      expect(results.length).toBe(2); // (0,0) and (10,10)
+      expect(results.length).toBe(2); // (0,0) and (0,0.1) within 15 km
     });
 
     it('should handle distance comparisons', async () => {
       const results = await db.query(
-        'SELECT * FROM features WHERE ST_Distance(geometry, ST_MakePoint(0, 0)) > 10'
+        'SELECT * FROM features WHERE ST_Distance(geometry, ST_MakePoint(0, 0)) > 10000'
       );
 
       expect(results.length).toBeGreaterThan(0);
@@ -147,7 +147,7 @@ describe('PostGIS Functions', () => {
   describe('ST_DWithin', () => {
     it('should find features within distance', async () => {
       const results = await db.query(
-        'SELECT * FROM features WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), 15)'
+        "SELECT * FROM features WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), 15000) AND type = 'point'"
       );
 
       expect(results.length).toBe(2);
@@ -155,20 +155,20 @@ describe('PostGIS Functions', () => {
 
     it('should respect distance parameter', async () => {
       const results1 = await db.query(
-        'SELECT * FROM features WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), 10)'
+        'SELECT * FROM features WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), 10000)'
       );
 
       const results2 = await db.query(
-        'SELECT * FROM features WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), 20)'
+        'SELECT * FROM features WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), 20000)'
       );
 
       expect(results2.length).toBeGreaterThan(results1.length);
     });
 
     it('should work with parameterized distance', async () => {
-      const distance = 15;
+      const distance = 15000;
       const results = await db.query(
-        'SELECT * FROM features WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), $1)',
+        "SELECT * FROM features WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), $1) AND type = 'point'",
         [distance]
       );
 
@@ -179,7 +179,7 @@ describe('PostGIS Functions', () => {
   describe('ST_Buffer', () => {
     it('should create buffer around point', async () => {
       const results = await db.query(
-        'SELECT * FROM features WHERE ST_Intersects(geometry, ST_Buffer(ST_MakePoint(10, 10), 5))'
+        'SELECT * FROM features WHERE ST_Intersects(geometry, ST_Buffer(ST_MakePoint(0, 0.1), 5000))'
       );
 
       expect(results.length).toBeGreaterThan(0);
@@ -187,11 +187,11 @@ describe('PostGIS Functions', () => {
 
     it('should create buffer of different sizes', async () => {
       const results1 = await db.query(
-        'SELECT * FROM features WHERE ST_Intersects(geometry, ST_Buffer(ST_MakePoint(10, 10), 1))'
+        'SELECT * FROM features WHERE ST_Intersects(geometry, ST_Buffer(ST_MakePoint(0, 0.1), 100))'
       );
 
       const results2 = await db.query(
-        'SELECT * FROM features WHERE ST_Intersects(geometry, ST_Buffer(ST_MakePoint(10, 10), 10))'
+        'SELECT * FROM features WHERE ST_Intersects(geometry, ST_Buffer(ST_MakePoint(0, 0.1), 15000))'
       );
 
       expect(results2.length).toBeGreaterThan(results1.length);
@@ -201,10 +201,10 @@ describe('PostGIS Functions', () => {
   describe('ST_Intersects', () => {
     it('should detect intersecting geometries', async () => {
       const results = await db.query(
-        'SELECT * FROM features WHERE ST_Intersects(geometry, ST_MakePoint(10, 10))'
+        'SELECT * FROM features WHERE ST_Intersects(geometry, ST_MakePoint(0, 0.1))'
       );
 
-      // Point at (10,10) should intersect with itself
+      // Point at (0,0.1) should intersect with itself
       expect(results.length).toBeGreaterThan(0);
     });
 
@@ -221,7 +221,7 @@ describe('PostGIS Functions', () => {
         `SELECT * FROM features
          WHERE ST_Intersects(
            geometry,
-           ST_GeomFromText('POLYGON((5 5, 15 5, 15 15, 5 15, 5 5))')
+           ST_GeomFromText('POLYGON((0 0, 0.1 0, 0.1 0.1, 0 0.1, 0 0))')
          )`
       );
 
@@ -315,7 +315,7 @@ describe('PostGIS Functions', () => {
         `SELECT * FROM features
          WHERE ST_Intersects(
            geometry,
-           ST_GeomFromText('POINT(10 10)')
+           ST_GeomFromText('POINT(0 0.1)')
          )`
       );
 
@@ -327,7 +327,7 @@ describe('PostGIS Functions', () => {
         `SELECT * FROM features
          WHERE ST_Intersects(
            geometry,
-           ST_GeomFromText('LINESTRING(0 0, 30 30)')
+           ST_GeomFromText('LINESTRING(0 0, 0.5 0.5)')
          )`
       );
 
@@ -381,7 +381,7 @@ describe('PostGIS Functions', () => {
       const results = await db.query(
         `SELECT * FROM features
          WHERE type = 'point'
-         AND ST_DWithin(geometry, ST_MakePoint(0, 0), 15)`
+         AND ST_DWithin(geometry, ST_MakePoint(0, 0), 15000)`
       );
 
       expect(results.length).toBeGreaterThan(0);
@@ -400,7 +400,7 @@ describe('PostGIS Functions', () => {
     it('should use spatial function in LIMIT query', async () => {
       const results = await db.query(
         `SELECT * FROM features
-         WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), 25)
+         WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), 25000)
          ORDER BY ST_Distance(geometry, ST_MakePoint(0, 0)) ASC
          LIMIT 2`
       );
@@ -439,7 +439,7 @@ describe('PostGIS Functions', () => {
       const results = await db.query(
         `SELECT * FROM features
          WHERE id = '1'
-         AND ST_DWithin(geometry, ST_MakePoint(10, 10), 5)`
+         AND ST_DWithin(geometry, ST_MakePoint(0, 0.1), 5000)`
       );
 
       expect(results).toBeDefined();
@@ -452,7 +452,7 @@ describe('PostGIS Functions', () => {
 
       for (let i = 0; i < 10; i++) {
         await db.query(
-          'SELECT * FROM features WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), 50)'
+          'SELECT * FROM features WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), 50000)'
         );
       }
 
@@ -464,10 +464,10 @@ describe('PostGIS Functions', () => {
 
     it('should use spatial index when available', async () => {
       // Create spatial index
-      db.features.createIndex('geometry', { auto: true });
+      await db.features.createIndex('geometry', { auto: true });
 
       const results = await db.query(
-        'SELECT * FROM features WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), 20)'
+        'SELECT * FROM features WHERE ST_DWithin(geometry, ST_MakePoint(0, 0), 20000)'
       );
 
       expect(results.length).toBeGreaterThan(0);

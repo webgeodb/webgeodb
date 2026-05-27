@@ -54,8 +54,9 @@ describe('IndexedDB Storage', () => {
         }
       };
 
-      await storage.open();
+      
       storage.defineSchema(schemas);
+      await storage.open();
 
       // Verify table exists
       const table = storage.getTable('features');
@@ -72,8 +73,8 @@ describe('IndexedDB Storage', () => {
         }
       };
 
-      await storage.open();
       storage.defineSchema(schemas);
+      await storage.open();
 
       const table = storage.getTable('features');
       expect(table).toBeDefined();
@@ -89,8 +90,8 @@ describe('IndexedDB Storage', () => {
         }
       };
 
-      await storage.open();
       storage.defineSchema(schemas);
+      await storage.open();
 
       const table = storage.getTable('features');
       expect(table).toBeDefined();
@@ -111,8 +112,8 @@ describe('IndexedDB Storage', () => {
         }
       };
 
-      await storage.open();
       storage.defineSchema(schemas);
+      await storage.open();
 
       const featuresTable = storage.getTable('features');
       const labelsTable = storage.getTable('labels');
@@ -130,8 +131,8 @@ describe('IndexedDB Storage', () => {
         }
       };
 
-      await storage.open();
       storage.defineSchema(schemas);
+      await storage.open();
 
       // BBox index should be created: [minX+minY+maxX+maxY]
       const table = storage.getTable('features');
@@ -144,7 +145,6 @@ describe('IndexedDB Storage', () => {
 
   describe('CRUD 操作', () => {
     beforeEach(async () => {
-      await storage.open();
       storage.defineSchema({
         features: {
           id: 'string',
@@ -153,6 +153,7 @@ describe('IndexedDB Storage', () => {
           geometry: 'geometry'
         }
       });
+      await storage.open();
     });
 
     afterEach(async () => {
@@ -253,15 +254,24 @@ describe('IndexedDB Storage', () => {
     it('should query with bbox range', async () => {
       const table = storage.getTable('features');
 
+      // Point [0,0] → bbox: [0,0,0,0]; Point [10,10] → bbox: [10,10,10,10]
       await table.bulkAdd([
-        { id: '1', name: 'Feature 1', type: 'point', geometry: { type: 'Point', coordinates: [0, 0] } },
-        { id: '2', name: 'Feature 2', type: 'point', geometry: { type: 'Point', coordinates: [10, 10] } }
+        {
+          id: '1', name: 'Feature 1', type: 'point',
+          geometry: { type: 'Point', coordinates: [0, 0] },
+          geometryMinX: 0, geometryMinY: 0, geometryMaxX: 0, geometryMaxY: 0
+        },
+        {
+          id: '2', name: 'Feature 2', type: 'point',
+          geometry: { type: 'Point', coordinates: [10, 10] },
+          geometryMinX: 10, geometryMinY: 10, geometryMaxX: 10, geometryMaxY: 10
+        }
       ]);
 
-      // Query features near origin (bbox: [0, 0, 1, 1])
+      // Query features near origin
       const results = await table
-        .where('[minX+minY+maxX+maxY]')
-        .between([0, 0, 1, 1], [1, 1, 2, 2])
+        .where('[geometryMinX+geometryMinY+geometryMaxX+geometryMaxY]')
+        .between([0, 0, 0, 0], [1, 1, 1, 1])
         .toArray();
 
       expect(results.length).toBeGreaterThan(0);
@@ -270,18 +280,18 @@ describe('IndexedDB Storage', () => {
 
   describe('边界情况', () => {
     it('should handle empty schema', async () => {
-      await storage.open();
       storage.defineSchema({});
+      await storage.open();
 
       // Should not throw
       await storage.close();
     });
 
     it('should handle schema with only id field', async () => {
-      await storage.open();
       storage.defineSchema({
         features: { id: 'string' }
       });
+      await storage.open();
 
       const table = storage.getTable('features');
       expect(table).toBeDefined();
@@ -289,13 +299,13 @@ describe('IndexedDB Storage', () => {
     });
 
     it('should handle geometry without coordinates', async () => {
-      await storage.open();
       storage.defineSchema({
         features: {
           id: 'string',
           geometry: 'geometry'
         }
       });
+      await storage.open();
 
       const table = storage.getTable('features');
 
@@ -311,7 +321,6 @@ describe('IndexedDB Storage', () => {
     });
 
     it('should handle large dataset', async () => {
-      await storage.open();
       storage.defineSchema({
         features: {
           id: 'string',
@@ -319,6 +328,7 @@ describe('IndexedDB Storage', () => {
           geometry: 'geometry'
         }
       });
+      await storage.open();
 
       const table = storage.getTable('features');
 
@@ -337,13 +347,13 @@ describe('IndexedDB Storage', () => {
     });
 
     it('should handle special characters in id', async () => {
-      await storage.open();
       storage.defineSchema({
         features: {
           id: 'string',
           name: 'string'
         }
       });
+      await storage.open();
 
       const table = storage.getTable('features');
 
@@ -360,13 +370,13 @@ describe('IndexedDB Storage', () => {
     });
 
     it('should handle unicode characters', async () => {
-      await storage.open();
       storage.defineSchema({
         features: {
           id: 'string',
           name: 'string'
         }
       });
+      await storage.open();
 
       const table = storage.getTable('features');
 
@@ -384,13 +394,13 @@ describe('IndexedDB Storage', () => {
   describe('版本管理', () => {
     it('should handle database upgrade', async () => {
       // Create version 1
-      await storage.open();
       storage.defineSchema({
         features: {
           id: 'string',
           name: 'string'
         }
       });
+      await storage.open();
       await storage.close();
 
       // Upgrade to version 2
@@ -414,30 +424,35 @@ describe('IndexedDB Storage', () => {
       await storage.open();
       await storage.close();
 
-      // Try to open with lower version
-      const storage2 = new IndexedDBStorage('test-storage', 0);
+      // Try to open with lower version — Dexie requires positive integer versions
+      // Use version 2 as the current, then try opening with version 1
+      const db2 = new IndexedDBStorage('test-storage', 2);
+      await db2.open();
+      await db2.close();
 
-      await expect(storage2.open()).rejects.toThrow();
-      await storage2.delete();
+      const storageLower = new IndexedDBStorage('test-storage', 1);
+
+      await expect(storageLower.open()).rejects.toThrow();
+      await storageLower.delete();
     });
   });
 
   describe('错误处理', () => {
     it('should throw on invalid table name', async () => {
-      await storage.open();
       storage.defineSchema({
         features: { id: 'string', name: 'string' }
       });
+      await storage.open();
 
       expect(() => storage.getTable('nonexistent')).toThrow();
       await storage.close();
     });
 
     it('should throw on duplicate id', async () => {
-      await storage.open();
       storage.defineSchema({
         features: { id: 'string', name: 'string' }
       });
+      await storage.open();
 
       const table = storage.getTable('features');
 
@@ -447,24 +462,27 @@ describe('IndexedDB Storage', () => {
       await storage.close();
     });
 
-    it('should throw on missing required fields', async () => {
-      await storage.open();
+    it('should handle missing fields gracefully', async () => {
       storage.defineSchema({
         features: { id: 'string', name: 'string' }
       });
+      await storage.open();
 
       const table = storage.getTable('features');
 
-      // Missing 'name' field
-      await expect(table.add({ id: '1' })).rejects.toThrow();
+      // Dexie doesn't enforce schema — missing fields are stored as undefined
+      await table.add({ id: '1' });
+      const retrieved = await table.get('1');
+      expect(retrieved.id).toBe('1');
+      expect(retrieved.name).toBeUndefined();
       await storage.close();
     });
 
     it('should handle database close during transaction', async () => {
-      await storage.open();
       storage.defineSchema({
         features: { id: 'string', name: 'string' }
       });
+      await storage.open();
 
       const table = storage.getTable('features');
 
@@ -481,7 +499,6 @@ describe('IndexedDB Storage', () => {
 
   describe('性能测试', () => {
     it('should handle bulk insert efficiently', async () => {
-      await storage.open();
       storage.defineSchema({
         features: {
           id: 'string',
@@ -489,6 +506,7 @@ describe('IndexedDB Storage', () => {
           geometry: 'geometry'
         }
       });
+      await storage.open();
 
       const table = storage.getTable('features');
 
@@ -513,7 +531,6 @@ describe('IndexedDB Storage', () => {
     });
 
     it('should handle bulk read efficiently', async () => {
-      await storage.open();
       storage.defineSchema({
         features: {
           id: 'string',
@@ -521,6 +538,7 @@ describe('IndexedDB Storage', () => {
           type: 'string'
         }
       });
+      await storage.open();
 
       const table = storage.getTable('features');
 

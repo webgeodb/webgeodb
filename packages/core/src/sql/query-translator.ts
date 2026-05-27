@@ -13,6 +13,7 @@ import type {
   LiteralValue
 } from './ast-nodes';
 import type { Geometry } from '../types';
+import wellknown from 'wellknown';
 
 /**
  * PostGIS 函数映射表
@@ -259,12 +260,13 @@ export class SQLToQueryBuilderTranslator {
     expr: FunctionCall,
     builder: QueryBuilder
   ): void {
-    const { name, arguments: args } = expr;
+    const { arguments: args } = expr;
+    const funcName = this.extractFunctionName(expr.name);
 
     // ST_DWithin 裸调用：ST_DWithin(geometry, point, distance)
-    if (name === 'ST_DWithin' && args.length >= 3) {
+    if (funcName === 'ST_DWithin' && args.length >= 3) {
       const field = this.extractFieldFromArgs(args);
-      const geometry = this.extractGeometryFromArgs(args.slice(1, 2));
+      const geometry = this.extractGeometryFromArgs(args.slice(1, 3));
       const distanceArg = args[2];
       const distance = this.extractLiteralValue(distanceArg);
       if (field && geometry && typeof distance === 'number') {
@@ -274,11 +276,11 @@ export class SQLToQueryBuilderTranslator {
     }
 
     // ST_Distance 裸调用：在比较表达式中已处理，此处作为 fallback
-    if (name === 'ST_Distance' && args.length >= 2) {
+    if (funcName === 'ST_Distance' && args.length >= 2) {
       // ST_Distance 裸调用通常出现在比较表达式中 (ST_Distance(...) < N)
       // 如果直接作为 boolean 使用，说明距离 > 0，即存在
       const field = this.extractFieldFromArgs(args);
-      const geometry = this.extractGeometryFromArgs(args.slice(1, 2));
+      const geometry = this.extractGeometryFromArgs(args.slice(1, 3));
       if (field && geometry) {
         builder.distance(field, this.geometryToPoint(geometry), '<', Infinity);
       }
@@ -286,12 +288,18 @@ export class SQLToQueryBuilderTranslator {
     }
 
     // 其他空间谓词函数（ST_Intersects、ST_Equals 等）
-    if (name in POSTGIS_FUNCTION_MAP) {
-      const predicate = POSTGIS_FUNCTION_MAP[name];
+    if (funcName in POSTGIS_FUNCTION_MAP) {
+      let predicate = POSTGIS_FUNCTION_MAP[funcName];
       const field = this.extractFieldFromArgs(args);
-      const geometry = this.extractGeometryFromArgs(args.slice(1, 2));
+      const geometry = this.extractGeometryFromArgs(args);
       if (field && geometry) {
-        // 直接推入 spatialConditions，不依赖 builder 方法是否存在
+        // 如果字段名在 args[1] 位置，contains/within 语义需要反转
+        // ST_Contains(geom, field) → field 是被包含的 → 应该用 within
+        const fieldIndex = this.getFieldIndex(args);
+        if (fieldIndex === 1) {
+          if (predicate === 'contains') predicate = 'within';
+          else if (predicate === 'within') predicate = 'contains';
+        }
         (builder as any).spatialConditions.push({
           field,
           predicate,
@@ -339,9 +347,10 @@ export class SQLToQueryBuilderTranslator {
   ): void {
     const func = expr.left as FunctionCall;
     const args = expr.right as any;
+    const funcName = this.extractFunctionName(func?.name);
 
-    if (func && func.name && POSTGIS_FUNCTION_MAP[func.name]) {
-      const predicate = POSTGIS_FUNCTION_MAP[func.name];
+    if (func && funcName && POSTGIS_FUNCTION_MAP[funcName]) {
+      const predicate = POSTGIS_FUNCTION_MAP[funcName];
 
       // 解析几何参数
       const geometry = this.extractGeometryFromArgs(func.arguments);
@@ -407,14 +416,22 @@ export class SQLToQueryBuilderTranslator {
     valueExpr: ASTExpression,
     builder: QueryBuilder
   ): void {
-    const predicate = POSTGIS_FUNCTION_MAP[func.name];
+    const funcName = this.extractFunctionName(func.name);
+    const predicate = POSTGIS_FUNCTION_MAP[funcName];
     if (!predicate) return;
 
     const args = func.arguments;
     const field = this.extractFieldFromArgs(args);
-    const geometry = this.extractGeometryFromArgs(args.slice(1, 2));
+    const geometry = this.extractGeometryFromArgs(args);
 
     if (field && geometry) {
+      // 如果字段名在 args[1] 位置，contains/within 语义需要反转
+      let predicate = POSTGIS_FUNCTION_MAP[funcName];
+      const fieldIndex = this.getFieldIndex(args);
+      if (fieldIndex === 1) {
+        if (predicate === 'contains') predicate = 'within';
+        else if (predicate === 'within') predicate = 'contains';
+      }
       (builder as any).spatialConditions.push({
         field,
         predicate,
@@ -429,12 +446,26 @@ export class SQLToQueryBuilderTranslator {
   private extractFieldFromArgs(args: ASTExpression[]): string | undefined {
     if (args.length === 0) return undefined;
 
-    const firstArg = args[0];
-    if (this.isColumnReference(firstArg)) {
-      return this.extractFieldName(firstArg);
+    // 检查所有参数，找到第一个列引用（字段名）
+    for (const arg of args) {
+      if (this.isColumnReference(arg)) {
+        return this.extractFieldName(arg);
+      }
     }
 
     return undefined;
+  }
+
+  /**
+   * 获取列引用在参数中的位置索引
+   */
+  private getFieldIndex(args: ASTExpression[]): number {
+    for (let i = 0; i < args.length; i++) {
+      if (this.isColumnReference(args[i])) {
+        return i;
+      }
+    }
+    return -1;
   }
 
   /**
@@ -443,12 +474,13 @@ export class SQLToQueryBuilderTranslator {
   private extractGeometryFromArgs(args: ASTExpression[]): Geometry | undefined {
     if (args.length === 0) return undefined;
 
-    const arg = args[0];
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
 
-    // 检查是否是 ST_MakePoint 或 ST_Point 函数
-    if (this.isFunctionNamed(arg, 'ST_MakePoint') || this.isFunctionNamed(arg, 'ST_Point')) {
-      return this.extractGeometryFromMakePoint(arg as FunctionCall);
-    }
+      // 检查是否是 ST_MakePoint 或 ST_Point 函数
+      if (this.isFunctionNamed(arg, 'ST_MakePoint') || this.isFunctionNamed(arg, 'ST_Point')) {
+        return this.extractGeometryFromMakePoint(arg as FunctionCall);
+      }
 
     // 检查是否是 ST_BoundingBox 函数
     if (this.isFunctionNamed(arg, 'ST_BoundingBox')) {
@@ -460,6 +492,11 @@ export class SQLToQueryBuilderTranslator {
       return this.extractGeometryFromWKT(arg as FunctionCall);
     }
 
+    // 检查是否是 ST_Buffer 函数
+    if (this.isFunctionNamed(arg, 'ST_Buffer')) {
+      return this.extractGeometryFromBuffer(arg as FunctionCall);
+    }
+
     // 检查是否是字面量对象
     if (this.isLiteral(arg)) {
       const value = (arg as LiteralValue).value;
@@ -467,8 +504,37 @@ export class SQLToQueryBuilderTranslator {
         return value;
       }
     }
+    }
 
     return undefined;
+  }
+
+  /**
+   * 从 ST_Buffer 函数提取 buffer 几何
+   */
+  private extractGeometryFromBuffer(func: FunctionCall): Geometry | undefined {
+    const args = func.arguments;
+    if (args.length < 2) return undefined;
+
+    const geometry = this.extractGeometryFromArgs(args.slice(0, 1));
+    const distance = this.extractLiteralValue(args[1]);
+
+    if (!geometry || typeof distance !== 'number' || geometry.type !== 'Point') return undefined;
+
+    // 近似 buffer：简单的正方形（1 米 ≈ 1/111320 度）
+    const dDeg = distance / 111320;
+    const [x, y] = geometry.coordinates;
+
+    return {
+      type: 'Polygon',
+      coordinates: [[
+        [x - dDeg, y - dDeg],
+        [x + dDeg, y - dDeg],
+        [x + dDeg, y + dDeg],
+        [x - dDeg, y + dDeg],
+        [x - dDeg, y - dDeg]
+      ]]
+    };
   }
 
   /**
@@ -510,14 +576,16 @@ export class SQLToQueryBuilderTranslator {
    */
   private extractGeometryFromWKT(func: FunctionCall): Geometry | undefined {
     const wktArg = func.arguments[0];
-    if (this.isLiteral(wktArg)) {
-      const wkt = (wktArg as LiteralValue).value;
-      // 这里需要使用 wellknown 库解析 WKT
-      // 为了避免循环依赖，我们在 postgis-functions.ts 中实现
-      console.warn('WKT 解析需要在 postgis-functions.ts 中实现');
-      return undefined;
+    // 使用 extractLiteralValue 获取字符串值（处理各种 AST 格式）
+    const wkt = this.extractLiteralValue(wktArg);
+    if (typeof wkt === 'string') {
+      try {
+        const parsed = wellknown.parse(wkt);
+        return parsed ?? undefined;
+      } catch {
+        return undefined;
+      }
     }
-
     return undefined;
   }
 
@@ -644,8 +712,30 @@ export class SQLToQueryBuilderTranslator {
   private isFunctionNamed(expr: ASTExpression, names: string | string[]): boolean {
     if (!this.isFunctionCall(expr)) return false;
 
+    const funcName = this.extractFunctionName((expr as FunctionCall).name);
     const nameArray = Array.isArray(names) ? names : [names];
-    return nameArray.includes((expr as FunctionCall).name);
+    return nameArray.includes(funcName);
+  }
+
+  /**
+   * 从嵌套名称格式中提取函数名
+   * 支持: string, { name: string }, { name: [...] }, [{ type: 'default', value: '...' }]
+   */
+  private extractFunctionName(name: any): string {
+    if (!name) return '';
+    if (typeof name === 'string') return name;
+    if (Array.isArray(name)) {
+      const first = name[0];
+      if (!first) return '';
+      if (typeof first === 'string') return first;
+      return first.value || first.name || '';
+    }
+    if (typeof name === 'object') {
+      if (Array.isArray(name.name)) return this.extractFunctionName(name.name);
+      if (typeof name.name === 'string') return name.name;
+      if (typeof name.value === 'string') return name.value;
+    }
+    return '';
   }
 
   private isColumnReference(expr: ASTExpression): expr is ColumnReference {

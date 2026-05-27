@@ -161,13 +161,11 @@ describe('EngineRegistry', () => {
       expect(() => registry.setDefaultEngine('nonexistent')).toThrow();
     });
 
-    it('should throw when default engine is not set', () => {
+    it('should throw when trying to unregister default engine', () => {
       const customRegistry = new EngineRegistryClass();
 
-      // Remove default engine
-      customRegistry.clear();
-
-      expect(() => customRegistry.getDefaultEngine()).toThrow();
+      // 不能注销默认引擎
+      expect(() => customRegistry.unregister('turf')).toThrow('Cannot unregister default engine');
     });
   });
 
@@ -186,13 +184,14 @@ describe('EngineRegistry', () => {
       expect(engines).toContain('turf2');
     });
 
-    it('should return empty array when no engines registered', () => {
+    it('should have default engine after clear', () => {
       const customRegistry = new EngineRegistryClass();
       customRegistry.clear();
 
       const engines = customRegistry.getEngineNames();
 
-      expect(engines).toEqual([]);
+      // clear() 应该重新注册默认引擎
+      expect(engines).toEqual(['turf']);
     });
 
     it('should reflect current state after registration', () => {

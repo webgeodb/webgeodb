@@ -6,6 +6,7 @@ import type { TableSchema } from '../types';
  */
 export class IndexedDBStorage extends Dexie {
   [key: string]: any;
+  private _schemaDefined = false;
 
   constructor(name: string, version: number) {
     super(name);
@@ -13,9 +14,14 @@ export class IndexedDBStorage extends Dexie {
   }
 
   /**
-   * 定义表结构
+   * 定义表结构。必须在 open() 之前调用。
    */
   defineSchema(schemas: Record<string, TableSchema>): void {
+    // If database is open, close it first (Dexie doesn't allow version changes on open DB)
+    if (this.isOpen()) {
+      this.close();
+    }
+
     const stores: Record<string, string> = {};
 
     for (const [tableName, schema] of Object.entries(schemas)) {
@@ -23,24 +29,21 @@ export class IndexedDBStorage extends Dexie {
 
       for (const [field, type] of Object.entries(schema)) {
         if (field === 'id') {
-          // 主键
           continue;
         }
 
         if (type === 'geometry') {
-          // 空间字段使用边界框索引
-          indices.push('[minX+minY+maxX+maxY]');
+          indices.push(`[${field}MinX+${field}MinY+${field}MaxX+${field}MaxY]`);
         } else {
-          // 普通字段索引
           indices.push(field);
         }
       }
 
-      // 定义表结构: id 为主键,其他字段为索引
       stores[tableName] = ['id', ...indices].join(',');
     }
 
     this.version(this.verno).stores(stores);
+    this._schemaDefined = true;
   }
 
   /**

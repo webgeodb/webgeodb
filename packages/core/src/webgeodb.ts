@@ -128,7 +128,10 @@ export class WebGeoDB {
           for (const [field, type] of Object.entries(schema)) {
             if (type === 'geometry' && data[field]) {
               const bbox = getBBox(data[field]);
-              Object.assign(data, bbox);
+              data[field + 'MinX'] = bbox.minX;
+              data[field + 'MinY'] = bbox.minY;
+              data[field + 'MaxX'] = bbox.maxX;
+              data[field + 'MaxY'] = bbox.maxY;
             }
           }
 
@@ -163,7 +166,10 @@ export class WebGeoDB {
             for (const [field, type] of Object.entries(schema)) {
               if (type === 'geometry' && item[field]) {
                 const bbox = getBBox(item[field]);
-                Object.assign(item, bbox);
+                item[field + 'MinX'] = bbox.minX;
+                item[field + 'MinY'] = bbox.minY;
+                item[field + 'MaxX'] = bbox.maxX;
+                item[field + 'MaxY'] = bbox.maxY;
               }
             }
           }
@@ -220,7 +226,10 @@ export class WebGeoDB {
           for (const [field, type] of Object.entries(schema)) {
             if (type === 'geometry' && data[field]) {
               const bbox = getBBox(data[field]);
-              Object.assign(data, bbox);
+              data[field + 'MinX'] = bbox.minX;
+              data[field + 'MinY'] = bbox.minY;
+              data[field + 'MaxX'] = bbox.maxX;
+              data[field + 'MaxY'] = bbox.maxY;
             }
           }
 
@@ -521,17 +530,15 @@ export class WebGeoDB {
       // 支持两种调用方式：
       // 1. db.query(sql, { params: [...] })
       // 2. db.query(sql, [...])
-      let executeOptions: SQLExecuteOptions;
-      if (Array.isArray(options)) {
-        executeOptions = { params: options };
-      } else {
-        executeOptions = options || {};
-      }
+      const executeOptions: SQLExecuteOptions = {
+        ...(Array.isArray(options) ? { params: options } : (options || {})),
+        tableSchemas: this.schemas
+      };
 
       const result = await SQLExecutor.execute(
         sql,
         this.storage,
-        this.spatialIndices, // 传入空间索引 Map，SQL 空间查询可利用索引加速
+        this.spatialIndices,
         spatialEngine,
         executeOptions
       );

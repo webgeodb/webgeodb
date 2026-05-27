@@ -33,7 +33,7 @@ describe('Spatial Index Auto-Maintenance', () => {
   describe('auto index creation', () => {
     it('should auto-create spatial index with auto=true', async () => {
       // 创建索引，设置auto=true
-      db.features.createIndex('geometry', { auto: true });
+      await db.features.createIndex('geometry', { auto: true });
 
       // 插入测试数据
       await db.features.insertMany([
@@ -71,7 +71,7 @@ describe('Spatial Index Auto-Maintenance', () => {
     });
 
     it('should maintain index after multiple inserts', async () => {
-      db.features.createIndex('geometry', { auto: true });
+      await db.features.createIndex('geometry', { auto: true });
 
       // 分批插入数据
       const batch1 = [
@@ -118,7 +118,7 @@ describe('Spatial Index Auto-Maintenance', () => {
     });
 
     it('should maintain index after updates', async () => {
-      db.features.createIndex('geometry', { auto: true });
+      await db.features.createIndex('geometry', { auto: true });
 
       // 插入初始数据
       await db.features.insert({
@@ -143,7 +143,7 @@ describe('Spatial Index Auto-Maintenance', () => {
     });
 
     it('should maintain index after deletes', async () => {
-      db.features.createIndex('geometry', { auto: true });
+      await db.features.createIndex('geometry', { auto: true });
 
       // 插入多条数据
       await db.features.insertMany([
@@ -184,7 +184,7 @@ describe('Spatial Index Auto-Maintenance', () => {
 
   describe('index performance', () => {
     it('should handle large dataset with auto index', async () => {
-      db.features.createIndex('geometry', { auto: true });
+      await db.features.createIndex('geometry', { auto: true });
 
       // 插入大量数据
       const features = [];
@@ -224,7 +224,7 @@ describe('Spatial Index Auto-Maintenance', () => {
 
   describe('index with different geometry types', () => {
     it('should maintain index for mixed geometry types', async () => {
-      db.features.createIndex('geometry', { auto: true });
+      await db.features.createIndex('geometry', { auto: true });
 
       // 插入不同类型的几何
       await db.features.insertMany([

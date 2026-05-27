@@ -26,6 +26,16 @@ class EngineRegistryClass {
    * @param engine - 空间引擎实例
    */
   register(engine: SpatialEngine): void {
+    // 验证引擎名称不能为空
+    if (!engine.name || engine.name.trim() === '') {
+      throw new Error('Engine name cannot be empty');
+    }
+
+    // 检查重复名称
+    if (this.engines.has(engine.name)) {
+      throw new Error(`Engine already registered: ${engine.name}`);
+    }
+
     this.engines.set(engine.name, engine);
 
     // 如果是默认引擎，更新默认引擎名称
@@ -40,6 +50,9 @@ class EngineRegistryClass {
    * @param name - 引擎名称
    */
   unregister(name: string): void {
+    if (!this.engines.has(name)) {
+      throw new Error(`Engine not found: ${name}`);
+    }
     if (name === this.defaultEngineName) {
       throw new Error(`Cannot unregister default engine: ${name}`);
     }
@@ -220,12 +233,12 @@ class EngineRegistryClass {
   }
 
   /**
-   * 清空所有引擎（除了默认引擎）
+   * 清空所有已注册的引擎，并重新注册默认引擎
    */
   clear(): void {
-    const defaultEngine = this.getDefaultEngine();
     this.engines.clear();
-    this.register(defaultEngine);
+    // 重新注册默认引擎
+    this.register(new TurfEngine({ name: 'turf', isDefault: true }));
   }
 }
 

@@ -22,6 +22,7 @@ import { SQLQueryCache, getGlobalCache } from './cache';
 import { PostGISFunctionRegistry, parsePostGISFunction } from './postgis-functions';
 import { AggregateFunctionProcessor } from './aggregate-functions';
 import { ErrorFactory, SQLError, DatabaseError, StorageError, ErrorCode } from '../errors';
+import wellknown from 'wellknown';
 
 /**
  * SQL 执行选项
@@ -35,6 +36,8 @@ export interface SQLExecuteOptions {
   spatialEngine?: SpatialEngine;
   /** 预解析的结果（用于预编译语句） */
   parseResult?: SQLParseResult;
+  /** 表 schema 定义（用于列验证） */
+  tableSchemas?: Record<string, Record<string, string>>;
 }
 
 /**
@@ -83,20 +86,26 @@ export class PreparedSQLStatement {
   /**
    * 执行预编译语句
    */
-  async execute(params?: any[]): Promise<SQLExecuteResult> {
+  async execute(params?: any[]): Promise<any[]> {
+    // 深拷贝 AST 以避免多次执行时参数互相污染
+    const clonedParseResult = JSON.parse(JSON.stringify(this.parseResult));
+
     const options: SQLExecuteOptions = {
       params,
       spatialEngine: this.spatialEngine,
-      parseResult: this.parseResult
+      parseResult: clonedParseResult,
+      useCache: false // 参数化查询不使用缓存
     };
 
-    return SQLExecutor.execute(
+    const result = await SQLExecutor.execute(
       this.sql,
       this.storage,
       this.spatialIndices,
       this.spatialEngine,
       options
     );
+
+    return result.data;
   }
 
   /**
@@ -163,7 +172,8 @@ export class SQLExecutor {
             statement as SQLSelectStatement,
             storage,
             spatialIndices,
-            spatialEngine
+            spatialEngine,
+            options.tableSchemas
           );
 
         case 'insert':
@@ -222,11 +232,32 @@ export class SQLExecutor {
     statement: SQLSelectStatement,
     storage: IndexedDBStorage,
     spatialIndices: Map<string, SpatialIndex> | null,
-    spatialEngine: SpatialEngine
+    spatialEngine: SpatialEngine,
+    tableSchemas?: Record<string, Record<string, string>>
   ): Promise<any[]> {
     // 检查数据库是否已关闭
     if (!storage.isOpen) {
       throw ErrorFactory.databaseError(ErrorCode.DATABASE_CLOSED, 'Database is closed, cannot execute SELECT query');
+    }
+
+    // 验证列是否存在
+    if (tableSchemas) {
+      const tableSchema = tableSchemas[statement.from];
+      if (tableSchema) {
+        const validColumns = new Set(Object.keys(tableSchema));
+        for (const col of statement.columns) {
+          // Columns are converted to { type: 'column', name: 'fieldName' } by sql-parser
+          if (col.type === 'column') {
+            const colName = col.name || '';
+            if (colName && colName !== '*' && !validColumns.has(colName)) {
+              throw ErrorFactory.queryError(
+                `Invalid column name: '${colName}' does not exist in table '${statement.from}'`,
+                { column: colName, table: statement.from, validColumns: Array.from(validColumns) }
+              );
+            }
+          }
+        }
+      }
     }
 
     try {
@@ -510,15 +541,25 @@ export class SQLExecutor {
         const pointExpr = args[1];
 
         // 获取几何数据
-        const geom = this.extractGeometryValue(geomExpr, row);
+        let geom = this.extractGeometryValue(geomExpr, row);
         const point = this.extractPointValue(pointExpr);
 
         if (!geom || !point) return null;
 
-        // 使用 SpatialEngine 计算距离
-        const distance = spatialEngine.distance(geom, point);
-        console.log(`[SQL Executor] ST_Distance result:`, distance);
-        return distance;
+        // turf.distance 要求两个参数都是 Point，非 Point 几何先取质心
+        if (geom.type !== 'Point') {
+          try {
+            geom = spatialEngine.centroid(geom);
+          } catch {
+            return null;
+          }
+        }
+
+        // Use SpatialEngine distance, converted to kilometers for geographic CRS
+        const distInDegrees = spatialEngine.distance(geom, point);
+        // Convert degrees to kilometers (approximate: 1 deg ≈ 111.32 km at equator)
+        const distInKm = distInDegrees * 111.32;
+        return distInKm;
       }
 
       case 'ST_GeometryType': {
@@ -564,6 +605,34 @@ export class SQLExecutor {
         return point;
       }
 
+      case 'ST_AsText': {
+        // ST_AsText(geometry) — GeoJSON → WKT
+        if (args.length < 1) return null;
+
+        const geomExpr = args[0];
+        const geom = this.extractGeometryValue(geomExpr, row);
+
+        if (!geom) return null;
+
+        try {
+          const wkt = wellknown.stringify(geom);
+          return wkt;
+        } catch {
+          return null;
+        }
+      }
+
+      case 'ST_AsBinary': {
+        // ST_AsBinary(geometry) — GeoJSON → WKB (placeholder via JSON)
+        if (args.length < 1) return null;
+
+        const geomExpr = args[0];
+        const geom = this.extractGeometryValue(geomExpr, row);
+
+        if (!geom) return null;
+        return JSON.stringify(geom);
+      }
+
       default:
         console.warn(`[SQL Executor] Unsupported function: ${funcName}`);
         return null;
@@ -595,6 +664,25 @@ export class SQLExecutor {
   }
 
   /**
+   * 从 column_ref AST 节点提取列名
+   */
+  private static extractColumnName(col: any): string {
+    if (col.type !== 'column_ref') return '';
+    const column = col.column;
+    if (!column) return '';
+    if (typeof column === 'string') return column;
+    if (typeof column === 'object') {
+      // PostgreSQL 模式: { expr: { type: 'default', value: 'fieldName' } }
+      if (column.expr && typeof column.expr === 'object') {
+        return column.expr.value || '';
+      }
+      // 直接值
+      if (typeof column.value === 'string') return column.value;
+    }
+    return '';
+  }
+
+  /**
    * 提取几何值
    */
   private static extractGeometryValue(expr: any, row: any): any {
@@ -620,8 +708,11 @@ export class SQLExecutor {
    */
   private static extractPointValue(expr: any): any {
     // 处理 ST_MakePoint(x, y) 或 ST_Point(x, y) 函数调用
-    if (expr.type === 'function' && (expr.name === 'ST_MakePoint' || expr.name === 'ST_Point' || expr.fn?.name === 'ST_MakePoint' || expr.fn?.name === 'ST_Point')) {
-      const args = expr.args || expr.arguments || [];
+    const funcName = expr.type === 'function' ? this.getFunctionName(expr) : null;
+    const isPointFunc = funcName === 'ST_MakePoint' || funcName === 'ST_Point';
+
+    if (expr.type === 'function' && isPointFunc) {
+      const args = expr.args || expr.arguments || expr.expression?.arguments || expr.expression?.args || [];
       const x = this.extractLiteralValue(args[0]);
       const y = this.extractLiteralValue(args[1]);
       if (x !== null && y !== null) {
@@ -742,8 +833,65 @@ export class SQLExecutor {
    * 应用 HAVING 子句
    */
   private static applyHaving(results: any[], having: any): any[] {
-    // TODO: 实现 HAVING 子句
-    return results;
+    return results.filter(row => this.evaluateHavingExpression(having, row));
+  }
+
+  /**
+   * 递归评估 HAVING 表达式
+   */
+  private static evaluateHavingExpression(expr: any, row: any): boolean {
+    if (!expr || typeof expr !== 'object') return true;
+
+    // 处理逻辑运算符 AND/OR（convertExpression 将 binary_expr 转为 type: 'binary'）
+    if ((expr.type === 'binary' || expr.type === 'binary_expr') && (expr.operator === 'AND' || expr.operator === 'OR')) {
+      const leftResult = this.evaluateHavingExpression(expr.left, row);
+      const rightResult = this.evaluateHavingExpression(expr.right, row);
+      return expr.operator === 'AND' ? (leftResult && rightResult) : (leftResult || rightResult);
+    }
+
+    // 处理比较运算符
+    if (expr.type === 'binary' || expr.type === 'binary_expr') {
+      const left = this.evaluateHavingOperand(expr.left, row);
+      const right = this.evaluateHavingOperand(expr.right, row);
+
+      switch (expr.operator) {
+        case '=': return left == right;
+        case '!=':
+        case '<>': return left != right;
+        case '>': return left > right;
+        case '>=': return left >= right;
+        case '<': return left < right;
+        case '<=': return left <= right;
+        default: return true;
+      }
+    }
+
+    return true;
+  }
+
+  /**
+   * 评估 HAVING 操作数
+   */
+  private static evaluateHavingOperand(operand: any, row: any): any {
+    if (!operand || typeof operand !== 'object') return operand;
+
+    if (operand.type === 'column_ref') {
+      // convertExpression preserves column_ref with column as-is (may be string or object)
+      const colName = typeof operand.column === 'string'
+        ? operand.column
+        : (operand.column?.expr?.value || operand.column?.value || '');
+      return row[colName];
+    }
+
+    if (operand.type === 'literal') {
+      return operand.value;
+    }
+
+    if (operand.type === 'number' || operand.type === 'string') {
+      return operand.value;
+    }
+
+    return operand.value;
   }
 
   /**
@@ -766,9 +914,10 @@ export class SQLExecutor {
             );
           }
 
+          const paramValue = params[paramIndex++];
           return {
             type: 'literal',
-            value: params[paramIndex++]
+            value: paramValue
           };
         }
 
@@ -794,6 +943,11 @@ export class SQLExecutor {
           node.where = replaceParameter(node.where);
         }
 
+        // 处理 expr_list (IN/BETWEEN 的参数列表)
+        if (node.type === 'expr_list' && Array.isArray(node.value)) {
+          node.value = node.value.map(replaceParameter);
+        }
+
         // 处理其他可能的子节点
         if (node.columns) {
           node.columns = node.columns.map(replaceParameter);
@@ -814,6 +968,19 @@ export class SQLExecutor {
       }
       throw error;
     }
+  }
+
+  /**
+   * Convert parameter values for type coercion (e.g., numeric strings → numbers)
+   */
+  private static convertParamValue(value: any): any {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed !== '' && !isNaN(Number(trimmed))) {
+        return Number(trimmed);
+      }
+    }
+    return value;
   }
 
   /**

@@ -419,19 +419,22 @@ export class QueryBuilder<T = any> {
           return await table.where(firstCondition.field).anyOf(firstCondition.value).toArray();
         case 'not in':
           return await table.where(firstCondition.field).noneOf(firstCondition.value).toArray();
-        case 'like':
-          // Like 操作符需要全表扫描后过滤
+        case 'like': {
+          const likeRegex1 = this.likePatternToRegex(firstCondition.value);
           const items1 = await table.toArray();
           return items1.filter(item => {
             const value = this.getNestedValue(item, firstCondition.field);
-            return typeof value === 'string' && value.includes(firstCondition.value);
+            return typeof value === 'string' && likeRegex1.test(value);
           });
-        case 'not like':
+        }
+        case 'not like': {
+          const likeRegex2 = this.likePatternToRegex(firstCondition.value);
           const items2 = await table.toArray();
           return items2.filter(item => {
             const value = this.getNestedValue(item, firstCondition.field);
-            return typeof value === 'string' && !value.includes(firstCondition.value);
+            return typeof value === 'string' && !likeRegex2.test(value);
           });
+        }
         default:
           throw ErrorFactory.queryError(
             `Unsupported query operator: ${firstCondition.operator}`,
@@ -498,6 +501,23 @@ export class QueryBuilder<T = any> {
   }
 
   /**
+   * 将 SQL LIKE 模式转换为正则表达式
+   * % 匹配任意字符序列，_ 匹配单个字符
+   * 如果不包含 SQL 通配符，则作为子字符串匹配（向后兼容）
+   */
+  private likePatternToRegex(pattern: string): RegExp {
+    const hasWildcards = pattern.includes('%') || pattern.includes('_');
+    let escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    let regexStr;
+    if (hasWildcards) {
+      regexStr = escaped.replace(/%/g, '.*').replace(/_/g, '.');
+    } else {
+      regexStr = `.*${escaped}.*`;
+    }
+    return new RegExp(`^${regexStr}$`);
+  }
+
+  /**
    * 检查条件
    */
   private checkCondition(
@@ -507,9 +527,26 @@ export class QueryBuilder<T = any> {
   ): boolean {
     switch (operator) {
       case '=':
-        return value === target;
+        if (value === target) return true;
+        // Type coercion: try numeric comparison for string/number mismatches
+        if (typeof value !== typeof target) {
+          const numValue = Number(value);
+          const numTarget = Number(target);
+          if (!isNaN(numValue) && !isNaN(numTarget) && numValue === numTarget) {
+            return true;
+          }
+        }
+        return false;
       case '!=':
-        return value !== target;
+        if (value === target) return false;
+        if (typeof value !== typeof target) {
+          const numValue = Number(value);
+          const numTarget = Number(target);
+          if (!isNaN(numValue) && !isNaN(numTarget) && numValue === numTarget) {
+            return false;
+          }
+        }
+        return true;
       case '>':
         return value > target;
       case '>=':
@@ -705,8 +742,8 @@ export class QueryBuilder<T = any> {
   private applyOrdering(results: T[]): T[] {
     return results.sort((a, b) => {
       for (const config of this.orderByConfigs) {
-        const aValue = (a as any)[config.field];
-        const bValue = (b as any)[config.field];
+        const aValue = this.getNestedValue(a, config.field);
+        const bValue = this.getNestedValue(b, config.field);
 
         if (aValue < bValue) {
           return config.direction === 'asc' ? -1 : 1;

@@ -338,11 +338,10 @@ describe('引擎注册表测试', () => {
   });
 
   it('应该能够获取引擎信息', () => {
-    // 重新注册默认引擎
+    // 清空并重新注册引擎
     EngineRegistry.clear();
-    const turfEngine = new TurfEngine();
-    EngineRegistry.register(turfEngine);
 
+    // clear() 已经重新注册了默认 turf 引擎
     const enginesInfo = EngineRegistry.getEnginesInfo();
     expect(enginesInfo.length).toBeGreaterThan(0);
     // 找到默认引擎

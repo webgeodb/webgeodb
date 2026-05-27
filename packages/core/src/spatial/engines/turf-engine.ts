@@ -25,7 +25,7 @@ import type {
   DistanceUnit
 } from '../spatial-engine';
 import type { SpatialPredicate } from '../../types/database';
-import type { GeometryType } from '../../types/geometry';
+import type { GeometryType, Position } from '../../types/geometry';
 import { isEmptyGeometry } from '../../utils/bbox';
 
 /**
@@ -579,11 +579,14 @@ export class TurfEngine implements SpatialEngine {
   // ==================== 拓扑操作 ====================
 
   buffer(geometry: Geometry, distance: number, units?: DistanceUnit): Geometry {
+    if (distance === 0) {
+      return geometry;
+    }
     const feature = this.toFeature(geometry) as any;
     const buffered = turf.buffer(feature, distance, {
       units: (units || this.defaultUnits) as turf.Units
     });
-    return buffered.geometry as any;
+    return buffered ? (buffered.geometry as any) : geometry;
   }
 
   intersection(g1: Geometry, g2: Geometry): Geometry | null {
@@ -625,21 +628,244 @@ export class TurfEngine implements SpatialEngine {
   // ==================== 工具方法 ====================
 
   distance(g1: Geometry, g2: Geometry, units?: DistanceUnit): number {
-    const f1 = this.toFeature(g1) as any;
-    const f2 = this.toFeature(g2) as any;
-    return turf.distance(f1, f2, {
-      units: (units || this.defaultUnits) as turf.Units
-    });
+    // 计算原生 CRS 单位（度）的 Euclidean 距离
+    const distInDegrees = this.euclideanDistance(g1, g2);
+
+    // 如果指定了单位，转换为请求的单位
+    if (units && units !== 'degrees') {
+      return this.convertDistance(distInDegrees, units);
+    }
+
+    return distInDegrees;
   }
 
   area(geometry: Geometry): number {
-    const feature = this.toFeature(geometry) as any;
-    return turf.area(feature);
+    // 使用 Shoelace 公式计算多边形面积（平方度）
+    if (geometry.type === 'Polygon') {
+      return this.polygonArea(geometry as Polygon);
+    }
+    if (geometry.type === 'MultiPolygon') {
+      let totalArea = 0;
+      for (const polygon of (geometry as MultiPolygon).coordinates) {
+        totalArea += Math.abs(this.ringArea(polygon));
+      }
+      return totalArea;
+    }
+    return 0;
   }
 
   length(geometry: Geometry): number {
-    const feature = this.toFeature(geometry) as any;
-    return turf.length(feature, { units: this.defaultUnits as turf.Units });
+    // 计算原生 CRS 单位（度）的 Euclidean 长度
+    if (geometry.type === 'LineString') {
+      return this.lineLength((geometry as LineString).coordinates);
+    }
+    if (geometry.type === 'MultiLineString') {
+      let totalLength = 0;
+      for (const line of (geometry as MultiLineString).coordinates) {
+        totalLength += this.lineLength(line);
+      }
+      return totalLength;
+    }
+    if (geometry.type === 'Polygon') {
+      let totalLength = 0;
+      for (const ring of (geometry as Polygon).coordinates) {
+        totalLength += this.lineLength(ring);
+      }
+      return totalLength;
+    }
+    if (geometry.type === 'MultiPolygon') {
+      let totalLength = 0;
+      for (const polygon of (geometry as MultiPolygon).coordinates) {
+        for (const ring of polygon) {
+          totalLength += this.lineLength(ring);
+        }
+      }
+      return totalLength;
+    }
+    return 0;
+  }
+
+  // ==================== 内部 Euclidean 计算方法 ====================
+
+  /**
+   * 计算两点之间的 Euclidean 距离（度）
+   */
+  private pointDistance(a: Position, b: Position): number {
+    const dx = (b[0] || 0) - (a[0] || 0);
+    const dy = (b[1] || 0) - (a[1] || 0);
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  /**
+   * 计算线段的长度（度）
+   */
+  private lineLength(coords: Position[]): number {
+    let total = 0;
+    for (let i = 1; i < coords.length; i++) {
+      total += this.pointDistance(coords[i - 1]!, coords[i]!);
+    }
+    return total;
+  }
+
+  /**
+   * 计算环的面积（Shoelace 公式，平方度）
+   */
+  private ringArea(coords: Position[]): number {
+    let area = 0;
+    const n = coords.length;
+    for (let i = 0; i < n - 1; i++) {
+      const xi = coords[i]![0] || 0;
+      const yi = coords[i]![1] || 0;
+      const xj = coords[i + 1]![0] || 0;
+      const yj = coords[i + 1]![1] || 0;
+      area += xi * yj - xj * yi;
+    }
+    return area / 2;
+  }
+
+  /**
+   * 计算多边形面积（平方度），含环
+   */
+  private polygonArea(polygon: Polygon): number {
+    let totalArea = 0;
+    const rings = polygon.coordinates;
+    // 外环（正面积）
+    totalArea += Math.abs(this.ringArea(rings[0]!));
+    // 内环（洞，负面积）
+    for (let i = 1; i < rings.length; i++) {
+      totalArea -= Math.abs(this.ringArea(rings[i]!));
+    }
+    return totalArea;
+  }
+
+  /**
+   * 计算两个几何体之间的最小 Euclidean 距离（度）
+   */
+  private euclideanDistance(g1: Geometry, g2: Geometry): number {
+    // Point to Point
+    if (g1.type === 'Point' && g2.type === 'Point') {
+      return this.pointDistance(
+        (g1 as Point).coordinates,
+        (g2 as Point).coordinates
+      );
+    }
+
+    // Point to LineString
+    if (g1.type === 'Point' && g2.type === 'LineString') {
+      return this.pointToLineDistance(
+        (g1 as Point).coordinates,
+        (g2 as LineString).coordinates
+      );
+    }
+    if (g2.type === 'Point' && g1.type === 'LineString') {
+      return this.pointToLineDistance(
+        (g2 as Point).coordinates,
+        (g1 as LineString).coordinates
+      );
+    }
+
+    // Point to Polygon
+    if (g1.type === 'Point' && g2.type === 'Polygon') {
+      return this.pointToPolygonDistance(
+        (g1 as Point).coordinates,
+        (g2 as Polygon).coordinates
+      );
+    }
+    if (g2.type === 'Point' && g1.type === 'Polygon') {
+      return this.pointToPolygonDistance(
+        (g2 as Point).coordinates,
+        (g1 as Polygon).coordinates
+      );
+    }
+
+    // 通用回退：使用质心距离
+    return this.pointDistance(
+      (this.centroid(g1) as Point).coordinates,
+      (this.centroid(g2) as Point).coordinates
+    );
+  }
+
+  /**
+   * 点到线的最短距离
+   */
+  private pointToLineDistance(point: Position, lineCoords: Position[]): number {
+    let minDist = Infinity;
+    for (let i = 1; i < lineCoords.length; i++) {
+      const dist = this.pointToSegmentDistance(
+        point,
+        lineCoords[i - 1]!,
+        lineCoords[i]!
+      );
+      if (dist < minDist) minDist = dist;
+    }
+    return minDist;
+  }
+
+  /**
+   * 点到线段的最短距离
+   */
+  private pointToSegmentDistance(
+    p: Position,
+    a: Position,
+    b: Position
+  ): number {
+    const px = p[0] || 0;
+    const py = p[1] || 0;
+    const ax = a[0] || 0;
+    const ay = a[1] || 0;
+    const bx = b[0] || 0;
+    const by = b[1] || 0;
+
+    const abx = bx - ax;
+    const aby = by - ay;
+    const apx = px - ax;
+    const apy = py - ay;
+
+    const abLenSq = abx * abx + aby * aby;
+    if (abLenSq === 0) return Math.sqrt(apx * apx + apy * apy);
+
+    let t = (apx * abx + apy * aby) / abLenSq;
+    t = Math.max(0, Math.min(1, t));
+
+    const closestX = ax + t * abx;
+    const closestY = ay + t * aby;
+    const dx = px - closestX;
+    const dy = py - closestY;
+
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  /**
+   * 点到多边形的最短距离
+   */
+  private pointToPolygonDistance(point: Position, rings: Position[][]): number {
+    let minDist = Infinity;
+    for (const ring of rings) {
+      // 点在外环内部时距离为 0，在内环内部时距离 > 0
+      const dist = this.pointToLineDistance(point, ring);
+      if (dist < minDist) minDist = dist;
+    }
+    return minDist;
+  }
+
+  /**
+   * 将度距离转换为其他单位（近似）
+   */
+  private convertDistance(distInDegrees: number, units: DistanceUnit): number {
+    // 近似：1 度 ≈ 111.32 km（赤道）
+    const kmPerDegree = 111.32;
+    const distInKm = distInDegrees * kmPerDegree;
+
+    switch (units) {
+      case 'kilometers':
+        return distInKm;
+      case 'meters':
+        return distInKm * 1000;
+      case 'miles':
+        return distInKm * 0.621371;
+      default:
+        return distInDegrees;
+    }
   }
 
   bbox(geometry: Geometry): BBox {
